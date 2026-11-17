@@ -88,7 +88,15 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   Annen, 2009).
 - New magma, with the injection composition and temperature, fills the opened sill. Optionally only the melt is
   injected: the injection bulk is equilibrated at the chamber-centre pressure and the injection temperature, and its
-  melt composition is used instead of the bulk. With the injection target "in
+  melt composition is used instead of the bulk, with the lens thickness scaled by that melt fraction. Its trace elements are then those of the melt, from the melt–solid mass balance
+  at that equilibrium, with melt Zr capped at zircon saturation.
+- The injection temperature is constant, or follows a time signal: a 1st-order Gaussian peak (heating from the base
+  temperature to a peak and cooling back, with amplitude, peak time and heating and cooling widths, optionally repeated
+  for a number of cycles at a fixed interval), a 2nd-order
+  sinusoid (amplitude, period, phase) and 3rd-order random noise (correlated, with a standard deviation, correlation
+  time and seed), bounded by a minimum and maximum temperature.
+  The injected magma (or melt) is re-equilibrated at the temperature of each injection. The Injection tab previews
+  the signal and the temperature of every injection. With the injection target "in
   place" the sill stays where it is emplaced; it joins the mobile body only if it is connected to it. With "mobile body"
   (default) the sill content that lands outside an existing mobile body is exchanged, at constant volume, for the same
   volume of mobile-body magma, so that the injected magma feeds the body directly; without a mobile body the sill stays
@@ -201,6 +209,17 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   - one representative zoned grain per family.
 - The Trace elements tab shows the erupted REE or all trace elements, normalised to CI chondrite (McDonough & Sun 1995), to primitive
   mantle (Sun & McDonough 1989, or McDonough & Sun 1995) or to the injected magma.
+- The Eruption → Sequence tab follows every zircon-bearing eruption up to the selected output (or one merged sample
+  per output):
+  - zircon age against eruption age: one violin of single-spot ages per eruption (quantile bands above 40 samples),
+    the median and 5–95 % ages of the erupted zircon mass, and the line where zircon age equals eruption age;
+  - per eruption, from the erupted zircon mass: 5–95 % ages and mean residence time before eruption, skewness and
+    kurtosis (Caricchi et al., 2014), antecryst (older than the previous eruption) and inherited fractions; from the
+    spots: weighted mean and MSWD;
+  - eruption-age estimators tested against the model eruption age: youngest grain, youngest cluster YC2σ(3+)
+    (Dickinson & Gehrels, 2009), weighted mean, and a Bayesian estimate with a uniform crystallisation distribution
+    (Keller et al., 2018), with their error and 2σ coverage against the number of dated grains;
+  - a csv table of all of these, one row per eruption.
 
 ### 11. Conservation and diagnostics
 
@@ -230,6 +249,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   for energy-constrained open-system evolution of crustal magma bodies undergoing simultaneous recharge, assimilation
   and crystallization: the Magma Chamber Simulator. *Journal of Petrology*, 55, 1685–1717.
   [doi:10.1093/petrology/egu036](https://doi.org/10.1093/petrology/egu036)
+- Caricchi, L., Simpson, G., & Schaltegger, U. (2014). Zircons reveal magma fluxes in the Earth's crust. *Nature*,
+  511, 457–461.
 - Cheadle, M. J., Elliott, M. T., & McKenzie, D. (2004). Percolation threshold and permeability of crystallizing
   igneous rocks: the importance of textural equilibrium. *Geology*, 32, 757–760.
   [doi:10.1130/G20495.1](https://doi.org/10.1130/G20495.1)
@@ -237,6 +258,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   Mineralogy and Petrology*, 177. [doi:10.1007/s00410-022-01925-6](https://doi.org/10.1007/s00410-022-01925-6)
 - Degruyter, W., & Huber, C. (2014). A model for eruption frequency of upper crustal silicic magma chambers. *Earth
   and Planetary Science Letters*, 403, 117–130. [doi:10.1016/j.epsl.2014.06.047](https://doi.org/10.1016/j.epsl.2014.06.047)
+- Dickinson, W. R., & Gehrels, G. E. (2009). Use of U–Pb ages of detrital zircons to infer maximum depositional ages
+  of strata: a test against a Colorado Plateau Mesozoic database. *Earth and Planetary Science Letters*, 288, 115–125.
 - Druitt, T. H., & Sparks, R. S. J. (1984). On the formation of calderas during ignimbrite eruptions. *Nature*, 310,
   679–681. [doi:10.1038/310679a0](https://doi.org/10.1038/310679a0)
 - Giordano, D., Russell, J. K., & Dingwell, D. B. (2008). Viscosity of magmatic liquids: a model. *Earth and Planetary
@@ -250,6 +273,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
 - Jellinek, A. M., & DePaolo, D. J. (2003). A model for the origin of large silicic magma chambers: precursors of
   caldera-forming eruptions. *Bulletin of Volcanology*, 65, 363–381.
   [doi:10.1007/s00445-003-0277-y](https://doi.org/10.1007/s00445-003-0277-y)
+- Keller, C. B., Schoene, B., & Samperton, K. M. (2018). A stochastic sampling approach to zircon eruption age
+  interpretation. *Geochemical Perspectives Letters*, 8, 31–35.
 - Kerr, R. C. (1995). Convective crystal dissolution. *Contributions to Mineralogy and Petrology*, 121, 237–246.
   [doi:10.1007/BF02688239](https://doi.org/10.1007/BF02688239)
 - Lejeune, A.-M., & Richet, P. (1995). Rheology of crystal-bearing silicate melts: an experimental study at high

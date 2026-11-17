@@ -139,12 +139,16 @@ end
 """
     mageres_inject!(st::MAGEResState)
 
-    Inject one magma batch: open the chamber, route it to the body if selected, re-equilibrate, update
-    convection, and record the source layer and event. Returns the injected volume.
+    Inject one magma batch at the injection temperature of the current time (the injected magma is equilibrated at
+    that temperature first): open the chamber, route it to the body if selected, re-equilibrate, update convection,
+    and record the source layer and event. With only the equilibrated melt injected, the lens thickness is scaled by
+    the melt fraction of the injected composition at that temperature. Returns the injected volume.
 """
 function mageres_inject!(st::MAGEResState)
     o   = st.opts
-    V   = mageres_injection_volume(o)
+    T   = mageres_injection_T(o, st.t)
+    phi = st.thermo === nothing ? 1.0 : mageres_injection_equilibrium!(st.thermo, o, T)
+    V   = mageres_injection_volume(o, phi)
     led = mageres_apply_event!(st, V / st.chamber.I; mode = :inject)
     if st.thermo !== nothing
         th = st.thermo
@@ -161,7 +165,7 @@ function mageres_inject!(st::MAGEResState)
     end
     st.chamber.n_injections += 1
     st.erupt_armed           = true
-    push!(st.source.layers, MAGEResLayer(st.t, V, o.T_injection_C, MAGERES_SYMMETRY .* led.injected[mageres_ox_rows(st)],
+    push!(st.source.layers, MAGEResLayer(st.t, V, T, MAGERES_SYMMETRY .* led.injected[mageres_ox_rows(st)],
                                          MAGERES_SYMMETRY .* led.injected[mageres_tracer_rows(st)]))
     mageres_record!(st, :injection, V)
     return V

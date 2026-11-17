@@ -27,6 +27,9 @@ const MAGERES_RUN_OUTPUTS = [
     ("mageres-zircon-ages-fig",         "figure"),
     ("mageres-zircon-spots-fig",        "figure"),
     ("mageres-zircon-families-fig",     "figure"),
+    ("mageres-zircon-seq-fig",          "figure"),
+    ("mageres-zircon-seq-stats-fig",    "figure"),
+    ("mageres-eruption-age-test-fig",   "figure"),
     ("mageres-vital-signs-fig",         "figure"),
     ("mageres-energy-budget-fig",       "figure"),
     ("mageres-diagnostics-fig",         "figure"),
@@ -345,14 +348,27 @@ function mageres_save_gif(path::AbstractString, snap, id::AbstractString; frame_
 end
 
 """
+    mageres_snapshot_sequence(snap, i::Int; group = "eruption")
+
+    `MAGEResSequence` of the eruptions up to output `i` of `snap`, ages before the latest output, the eruptions of
+    output `i` flagged as selected; with `group = "output"` merged per output.
+"""
+function mageres_snapshot_sequence(snap, i::Int; group::AbstractString = "eruption")
+    t_prev = i > 1 ? snap.outputs[i-1].t : -Inf
+    return mageres_sequence(snap.outputs[i].state; t_ref = snap.outputs[end].t, t_sel = t_prev, group = group,
+                            bounds = [snap.outputs[j].t for j in 1:i])
+end
+
+"""
     mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_grid = true, show_outline = true,
-                            show_isotherms = true, te_show = "ree", te_norm = "chondrite")
+                            show_isotherms = true, te_show = "ree", te_norm = "chondrite", seq_group = "eruption")
 
     Dict mapping (id, "figure") of every results graph to its figure for the output of `snap` selected
     by `sel`; empty when there is no output.
 """
 function mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_grid = true, show_outline = true,
-                                 show_isotherms = true, te_show = "ree", te_norm = "chondrite")
+                                 show_isotherms = true, te_show = "ree", te_norm = "chondrite",
+                                 seq_group = "eruption")
     d        = Dict{Tuple{String,String},Any}()
     i        = mageres_selected_index(snap, sel)
     i == 0 && return d
@@ -370,7 +386,9 @@ function mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_
     S = snap.series
     d[("mageres-eruption-fig",      "figure")] =
         mageres_volume_figure(S; dP_crit = mageres_overpressure_on(st) ? st.opts.dP_crit_MPa : nothing)
-    d[("mageres-vital-signs-fig",   "figure")] = mageres_vital_signs_figure(S)
+    src = snap.outputs[end].state.source.layers
+    d[("mageres-vital-signs-fig",   "figure")] = mageres_vital_signs_figure(S; injections = ([l.t for l in src],
+                                                                                             [l.T for l in src]))
     d[("mageres-convection-fig",    "figure")] = mageres_convection_figure(S)
     d[("mageres-energy-budget-fig", "figure")] = mageres_energy_figure(S)
     d[("mageres-diagnostics-fig",   "figure")] = mageres_diagnostics_figure(S; te = mageres_te(st) !== nothing)
@@ -383,6 +401,11 @@ function mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_
     d[("mageres-zircon-ages-fig",     "figure")] = mageres_zircon_age_figure(st; t_from = t_prev, t_ref = t_ref)
     d[("mageres-zircon-spots-fig",    "figure")] = mageres_zircon_spot_figure(st; t_from = t_prev, t_ref = t_ref)
     d[("mageres-zircon-families-fig", "figure")] = mageres_zircon_family_figure(st; t_from = t_prev, t_ref = t_ref)
+    seq    = mageres_snapshot_sequence(snap, i; group = something(seq_group, "eruption"))
+    T_inj  = ([l.t for l in st.source.layers], [l.T for l in st.source.layers])
+    d[("mageres-zircon-seq-fig",        "figure")] = mageres_zircon_sequence_figure(seq; T_injection = T_inj)
+    d[("mageres-zircon-seq-stats-fig",  "figure")] = mageres_zircon_sequence_stats_figure(seq; T_injection = T_inj)
+    d[("mageres-eruption-age-test-fig", "figure")] = mageres_eruption_age_test_figure(seq)
     ox = snap.oxides
     d[("mageres-melt-in-fig",      "figure")] = mageres_composition_figure(mageres_layer_times(st.source),
                                                                            mageres_layer_comps(st.source),
@@ -746,6 +769,9 @@ const MAGERES_SVG_RESULT_PLOTS = [("mageres-eruption-fig",        "MAGERes_erupt
                                   ("mageres-zircon-ages-fig",     "MAGERes_zircon_age_distribution"),
                                   ("mageres-zircon-spots-fig",    "MAGERes_zircon_core_to_rim"),
                                   ("mageres-zircon-families-fig", "MAGERes_zircon_families"),
+                                  ("mageres-zircon-seq-fig",        "MAGERes_zircon_sequence"),
+                                  ("mageres-zircon-seq-stats-fig",  "MAGERes_zircon_sequence_stats"),
+                                  ("mageres-eruption-age-test-fig", "MAGERes_eruption_age_test"),
                                   ("mageres-melt-in-fig",         "MAGERes_composition_injected"),
                                   ("mageres-melt-chamber-fig",    "MAGERes_composition_chamber"),
                                   ("mageres-melt-out-fig",        "MAGERes_composition_erupted"),
@@ -796,6 +822,33 @@ function mageres_ic_state(vals, field::Symbol)
     st                  = mageres_init_state(oc)
     field == :level && mageres_inject!(st)
     return st
+end
+
+"""
+    mageres_sequence_csv_callback!(app)
+
+    Register the "Sequence table (csv)" download: the eruption-sequence table of the selected output of the run.
+"""
+function mageres_sequence_csv_callback!(app)
+    callback!(
+        app,
+        Output("mageres-seq-csv-download", "data"),
+        Input("mageres-seq-csv-button",    "n_clicks"),
+        State("run-id-store-mageres",      "data"),
+        State("mageres-timestep-select",   "value"),
+        State("mageres-seq-group",         "value");
+        prevent_initial_call = true,
+    ) do _n, run_id, sel, group
+        (run_id isa AbstractString && haskey(MAGERES_LIVE_RUNS, run_id)) || return no_update()
+        snap = mageres_live_snapshot(MAGERES_LIVE_RUNS[run_id])
+        i    = mageres_selected_index(snap, sel)
+        i == 0 && return no_update()
+        seq  = mageres_snapshot_sequence(snap, i; group = something(group, "eruption"))
+        (seq === nothing || isempty(seq.entries)) && return no_update()
+        name = mageres_export_stem("MAGERes_eruption_sequence", snap.outputs[i].t) * ".csv"
+        return Dict("content" => mageres_sequence_csv(seq), "filename" => name)
+    end
+    return app
 end
 
 """
@@ -898,6 +951,39 @@ function Tab_MAGERes_Callbacks(app)
     end
 
     """
+        Show the injection-temperature signal rows only in "signal" mode.
+    """
+    callback!(
+        app,
+        [Output(mageres_row_id(f), "style") for f in MAGERES_SIGNAL_FIELDS]...,
+
+        Input(mageres_input_id(:T_injection_mode), "value"),
+        prevent_initial_call = true,
+    ) do mode
+        return Tuple(mageres_signal_row_style(mode) for _ in MAGERES_SIGNAL_FIELDS)
+    end
+
+    """
+        Redraw the injection-temperature preview when one of its options changes; an invalid entry shows the error.
+    """
+    callback!(
+        app,
+        Output("mageres-inj-T-preview-fig", "figure"),
+
+        [Input(mageres_input_id(f), "value") for f in MAGERES_SIGNAL_INPUTS]...,
+        prevent_initial_call = true,
+    ) do vals...
+        any(v -> v === nothing, vals) && return mageres_placeholder_figure("Fill in every injection T option"; height = 380)
+        o = try
+            mageres_options_from_dict(Dict{String,Any}(string(f) => v for (f, v) in zip(MAGERES_SIGNAL_INPUTS, vals)))
+        catch e
+            e isa ArgumentError || e isa InexactError || rethrow()
+            return mageres_placeholder_figure(e isa ArgumentError ? e.msg : "Invalid value"; height = 380)
+        end
+        return mageres_injection_T_figure(o)
+    end
+
+    """
         Show the optimizer choice only for the legacy solver with a database that has a nullspace optimizer.
     """
     callback!(
@@ -954,6 +1040,7 @@ function Tab_MAGERes_Callbacks(app)
     mageres_config_callbacks!(app)
     mageres_svg_callbacks!(app)
     mageres_gif_callbacks!(app)
+    mageres_sequence_csv_callback!(app)
 
     """
         Compute the initial state on "Compute initial conditions" and update the initial-condition
@@ -1070,6 +1157,7 @@ function Tab_MAGERes_Callbacks(app)
         Input(mageres_input_id(:show_isotherms),   "value"),
         Input("mageres-te-show",                   "value"),
         Input("mageres-te-norm",                   "value"),
+        Input("mageres-seq-group",                 "value"),
         Input("mageres-loaded-run-store",          "data"),
 
         State("mageres-pie-unit",                  "data"),
@@ -1077,7 +1165,7 @@ function Tab_MAGERes_Callbacks(app)
         mageres_option_states()...;
 
         prevent_initial_call = true,
-    ) do _launch, _cancel, _resume, _n, sel, probe, show_grid, show_outline, show_isotherms, te_show, te_norm, run_id_loaded,
+    ) do _launch, _cancel, _resume, _n, sel, probe, show_grid, show_outline, show_isotherms, te_show, te_norm, seq_group, run_id_loaded,
          pie_unit, run_id, vals...
         bid = pushed_button(callback_context())
 
@@ -1173,10 +1261,10 @@ function Tab_MAGERes_Callbacks(app)
         pv   = probe === nothing ? nothing : (Float64(probe[1]), Float64(probe[2]))
         d    = mageres_results_figures(snap, sel; probe = pv, pie_unit = pie_unit, show_grid = show_grid,
                                        show_outline = show_outline, show_isotherms = show_isotherms,
-                                       te_show = te_show, te_norm = te_norm)
+                                       te_show = te_show, te_norm = te_norm, seq_group = seq_group)
         bid in ("mageres-timestep-select", "mageres-probe-store", mageres_input_id(:show_grid),
                 mageres_input_id(:show_outline), mageres_input_id(:show_isotherms), "mageres-te-show",
-                "mageres-te-norm") &&
+                "mageres-te-norm", "mageres-seq-group") &&
             return mageres_outputs(d)
 
         finished = snap.phase in ("done", "cancelled", "error")

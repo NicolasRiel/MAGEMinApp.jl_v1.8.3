@@ -46,6 +46,14 @@ end
     include(joinpath(@__DIR__, "test_isotopes.jl"))
 end
 
+@testset "MAGERes eruption ages" begin
+    include(joinpath(@__DIR__, "test_eruption_age.jl"))
+end
+
+@testset "MAGERes injection temperature" begin
+    include(joinpath(@__DIR__, "test_injection_signal.jl"))
+end
+
 @testset "threaded" begin
     # Do a dummy `@test true`:
     # If the process errors out the testset would error out as well

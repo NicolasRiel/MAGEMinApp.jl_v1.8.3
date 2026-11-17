@@ -32,7 +32,42 @@ end
 
     Load the `MAGEResState` saved by `mageres_save_state` from the JLD2 file `path`.
 """
-mageres_load_state(path::AbstractString) = JLD2.load(path, "state")::MAGEResState
+mageres_load_state(path::AbstractString) = mageres_jld2_load(path)["state"]::MAGEResState
+
+"""
+    mageres_options_from_stored(nt)
+
+    `MAGEResOptions` from the stored fields `nt` (field name => value) of options saved with any earlier layout:
+    fields that no longer exist are dropped and fields added since take their default value.
+"""
+function mageres_options_from_stored(nt)
+    o = MAGEResOptions()
+    for (k, v) in pairs(nt)
+        f = Symbol(k)
+        hasfield(MAGEResOptions, f) || continue
+        setfield!(o, f, mageres_convert_option(fieldtype(MAGEResOptions, f), v))
+    end
+    return o
+end
+
+@static if isdefined(JLD2, :Upgrade) && isdefined(JLD2, :rconvert)
+    JLD2.rconvert(::Type{MAGEResOptions}, nt::NamedTuple) = mageres_options_from_stored(nt)
+    const MAGERES_JLD2_TYPEMAP = Dict("MAGEMinApp.MAGEResOptions" => JLD2.Upgrade(MAGEResOptions))
+else
+    const MAGERES_JLD2_TYPEMAP = nothing
+end
+
+"""
+    mageres_jld2_load(path::AbstractString)
+
+    All entries of the JLD2 file `path` as a `Dict`, with stored `MAGEResOptions` of any earlier field layout mapped
+    onto the current one.
+"""
+function mageres_jld2_load(path::AbstractString)
+    read_all(f) = Dict{String,Any}(k => f[k] for k in keys(f))
+    MAGERES_JLD2_TYPEMAP === nothing && return jldopen(read_all, path, "r")
+    return jldopen(read_all, path, "r"; typemap = MAGERES_JLD2_TYPEMAP)
+end
 
 const MAGERES_RUN_FORMAT = 2
 
@@ -131,7 +166,7 @@ end
     `MAGEResLiveRun` holding its outputs, series and resume state (none before format 2), and the run options.
 """
 function mageres_load_simulation(path::AbstractString)
-    d    = JLD2.load(path)
+    d    = mageres_jld2_load(path)
     get(d, "format", 0) in 1:MAGERES_RUN_FORMAT || throw(ArgumentError("unsupported simulation file format"))
     live = MAGEResLiveRun()
     live.phase           = "done"

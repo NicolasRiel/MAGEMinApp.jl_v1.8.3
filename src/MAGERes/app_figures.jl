@@ -130,9 +130,9 @@ end
     mageres_vital_signs_figure(S::MAGEResSeries)
 
     Time series of mean and maximum chamber temperature, chamber thickness and, when available, mean chamber
-    melt fraction.
+    melt fraction; with `injections` (times [yr] and temperatures [°C]), the temperature of every injection.
 """
-function mageres_vital_signs_figure(S::MAGEResSeries)
+function mageres_vital_signs_figure(S::MAGEResSeries; injections = nothing)
     isempty(S.t) && return mageres_placeholder_figure("No run yet")
     traces = GenericTrace[
         scatter(; x = S.t, y = mageres_finite_or_nothing(S.T_mean), name = "mean chamber T (°C)", mode = "lines"),
@@ -141,6 +141,10 @@ function mageres_vital_signs_figure(S::MAGEResSeries)
         scatter(; x = S.t, y = mageres_finite_or_nothing(S.thickness), name = "chamber max thickness (m)",
                   mode = "lines", yaxis = "y2"),
     ]
+    if injections !== nothing && !isempty(injections[1])
+        push!(traces, scatter(; x = injections[1], y = injections[2], name = "injected T (°C)", mode = "markers",
+                                marker = attr(color = "rgb(200,40,40)", size = 4, symbol = "circle-open")))
+    end
     layout          = mageres_series_layout("Vital signs", "Temperature (°C)")
     layout[:yaxis2] = attr(title = "Thickness (m)", overlaying = "y", side = "right", rangemode = "tozero")
     if any(isfinite, S.melt_mean)
@@ -630,17 +634,6 @@ mageres_method_label(o::MAGEResOptions) =
                                     @sprintf("CA-ID-TIMS U-Pb, 1σ = 0.05 %% of %.2f Ma", o.zircon_eruption_age_Ma)
 
 """
-    mageres_weighted_mean(x::Vector{Float64}, s::Vector{Float64})
-
-    Inverse-variance weighted mean of `x` with 1σ `s`, its 1σ uncertainty and the MSWD.
-"""
-function mageres_weighted_mean(x::Vector{Float64}, s::Vector{Float64})
-    w  = 1 ./ s .^ 2
-    mu = sum(w .* x) / sum(w)
-    return mu, 1 / sqrt(sum(w)), length(x) > 1 ? sum(w .* (x .- mu) .^ 2) / (length(x) - 1) : NaN
-end
-
-"""
     mageres_zircon_rank_figure(st::MAGEResState; t_from = -Inf, t_ref = st.t)
 
     Rank-order plot of the synthetic single-spot zircon ages of the eruptions of `st` after `t_from` [yr]: ages before
@@ -887,4 +880,64 @@ function mageres_svg_cells(st::MAGEResState, field::Symbol)
         end
         return n
     end
+end
+
+"""
+    mageres_injection_T_figure(o::MAGEResOptions)
+
+    Preview of the injection temperature of `o` over the run: the signal on a fine time grid, the temperatures of the
+    actual injections (markers, clamped ones in red), the base + peak and base + peak + sinusoid curves of the time
+    signal, the clamp bounds, and a summary of the injected temperatures.
+"""
+function mageres_injection_T_figure(o::MAGEResOptions)
+    t_end = o.run_time_yr
+    tg    = collect(range(0.0, t_end; length = 2001))
+    cg    = mageres_injection_T_components(o, tg)
+    ti    = mageres_injection_times(o)
+    ci    = mageres_injection_T_components(o, ti)
+    sig   = mageres_injection_signal_on(o)
+    traces = GenericTrace[]
+    if sig
+        push!(traces, scatter(; x = tg, y = cg.base .+ cg.peak, mode = "lines", name = "base + 1st order (Gaussian peak)",
+                                line = attr(color = "rgb(120,120,120)", dash = "dash", width = 1),
+                                hovertemplate = "%{x:.0f} yr: %{y:.1f} °C<extra>base + peak</extra>"))
+        push!(traces, scatter(; x = tg, y = cg.base .+ cg.peak .+ cg.sine, mode = "lines",
+                                name = "+ 2nd order (sinusoid)", line = attr(color = "rgb(230,140,30)", dash = "dot", width = 1.5),
+                                hovertemplate = "%{x:.0f} yr: %{y:.1f} °C<extra>base + peak + sinusoid</extra>"))
+    end
+    push!(traces, scatter(; x = tg, y = cg.total, mode = "lines", name = sig ? "+ 3rd order (noise), clamped" :
+                                                                         "injection T",
+                            line = attr(color = "rgb(200,40,40)", width = 1.5),
+                            hovertemplate = "%{x:.0f} yr: %{y:.1f} °C<extra>injection T</extra>"))
+    if !isempty(ti)
+        col = [c ? "rgb(200,40,40)" : "black" for c in ci.clipped]
+        push!(traces, scatter(; x = ti, y = ci.total, mode = "markers", name = "injections",
+                                marker = attr(color = col, size = 5, symbol = "circle-open"),
+                                hovertemplate = "injection at %{x:.0f} yr: %{y:.1f} °C<extra></extra>"))
+    end
+    shapes = sig ? [attr(type = "line", xref = "paper", x0 = 0, x1 = 1, yref = "y", y0 = v, y1 = v,
+                         line = attr(color = "grey", width = 1, dash = "longdash")) for v in (o.T_inj_min_C, o.T_inj_max_C)] :
+                   []
+    note = isempty(ti) ? "no injection during the run" :
+           @sprintf("%d injections: T %.0f–%.0f °C, mean %.0f °C", length(ti), minimum(ci.total), maximum(ci.total),
+                    sum(ci.total) / length(ti)) *
+           (any(ci.clipped) ? @sprintf("<br>%d clamped to [%.0f, %.0f] °C", count(ci.clipped), o.T_inj_min_C,
+                                       o.T_inj_max_C) : "")
+    lo, hi = extrema(vcat(cg.total, sig ? cg.base .+ cg.peak .+ cg.sine : Float64[]))
+    pad    = max(10.0, 0.08 * (hi - lo))
+    layout = Layout(; height       = 380,
+                      plot_bgcolor = "white",
+                      margin       = attr(l = 70, r = 20, t = 20, b = 60),
+                      showlegend   = true,
+                      legend       = attr(orientation = "h", y = -0.25),
+                      xaxis        = attr(title = "Time (yr)", range = [0, t_end], showline = true, linecolor = "black",
+                                          mirror = true, ticks = "outside"),
+                      yaxis        = attr(title = "Injection T (°C)", range = [lo - pad, hi + pad], showline = true,
+                                          linecolor = "black", mirror = true, ticks = "outside"),
+                      shapes       = shapes,
+                      annotations  = [attr(x = 0.01, xref = "paper", xanchor = "left", y = 0.98, yref = "paper",
+                                           yanchor = "top", showarrow = false, align = "left", text = note,
+                                           bgcolor = "rgba(255,255,255,0.85)", bordercolor = "#ccc", borderwidth = 1,
+                                           font = attr(size = 11))])
+    return PlotlyJS.plot(traces, layout)
 end

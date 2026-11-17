@@ -266,10 +266,11 @@ mageres_host_density_at(st::MAGEResState, y::Real) =
 """
     mageres_injected_density(st::MAGEResState)
 
-    Conserved-quantity density of the injected magma.
+    Conserved-quantity density of the injected magma at the current injection temperature.
 """
 mageres_injected_density(st::MAGEResState) =
-    st.thermo === nothing ? mageres_content_density(st.injection, st.opts.T_injection_C) : st.thermo.injection_density
+    st.thermo === nothing ? mageres_content_density(st.injection, mageres_injection_T(st.opts, st.t)) :
+                            st.thermo.injection_density
 
 """
     mageres_conductivity!(st::MAGEResState)

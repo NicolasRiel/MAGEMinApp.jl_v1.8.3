@@ -362,15 +362,15 @@ function mageres_zircon_grain(te::MAGEResTE, o::MAGEResOptions, f::Int, m::Vecto
 end
 
 """
-    mageres_zircon_samples(st::MAGEResState; t_ref = st.t)
+    mageres_zircon_samples(st::MAGEResState; t_ref = st.t, zoned = true)
 
     One MAGEResZirconSample per eruption of `st` with zircon: `st.opts.zircon_synthetic_grains` synthetic single-spot
-    ages drawn from the erupted zircon mass (uniformly inside each age bin), and as many zoned grains drawn from the
-    families by grain number, analysed with spots of `st.opts.zircon_spot_um`. Ages are measured before the reference
+    ages drawn from the erupted zircon mass (uniformly inside each age bin), and (with `zoned`) as many zoned grains
+    drawn from the families by grain number, analysed with spots of `st.opts.zircon_spot_um`. Ages are measured before the reference
     time `t_ref` [yr] (the latest output) with the analytical uncertainty of the dating method. Reproducible per
     eruption.
 """
-function mageres_zircon_samples(st::MAGEResState; t_ref::Float64 = st.t)
+function mageres_zircon_samples(st::MAGEResState; t_ref::Float64 = st.t, zoned::Bool = true)
     te = mageres_te(st)
     (te === nothing || !te.zircon) && return MAGEResZirconSample[]
     n   = st.opts.zircon_synthetic_grains
@@ -385,7 +385,7 @@ function mageres_zircon_samples(st::MAGEResState; t_ref::Float64 = st.t)
         ages     = mageres_zircon_bin_ages(te, l.t, t_ref)
         grains   = Float64[]
         sigma    = Float64[]
-        zoned    = MAGEResZirconGrain[]
+        zgrains  = MAGEResZirconGrain[]
         n_inh    = 0
         if tot > 0
             rng = MersenneTwister(k)
@@ -403,16 +403,16 @@ function mageres_zircon_samples(st::MAGEResState; t_ref::Float64 = st.t)
                 end
             end
             ok = [f for f in 1:te.n_fam if fam_N[f] > 0 && sum(fam_mass[f]) > 0]
-            if !isempty(ok)
+            if zoned && !isempty(ok)
                 wn = cumsum(fam_N[ok]) ./ sum(fam_N[ok])
                 for _ in 1:n
                     f = ok[min(searchsortedfirst(wn, rand(rng)), length(ok))]
-                    push!(zoned, mageres_zircon_grain(te, st.opts, f, fam_mass[f], fam_N[f], l.t, t_ref, rng))
+                    push!(zgrains, mageres_zircon_grain(te, st.opts, f, fam_mass[f], fam_N[f], l.t, t_ref, rng))
                 end
             end
         end
         push!(out, MAGEResZirconSample(l.t, mass, ages, inh, sum(fam_N), grains, sigma, n_inh, fam_N, fam_mass,
-                                       zoned, l.t, 1))
+                                       zgrains, l.t, 1))
     end
     return out
 end

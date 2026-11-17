@@ -54,8 +54,23 @@ Base.@kwdef mutable struct MAGEResOptions
     injection_period_yr       :: Float64         = 1000.0
     first_injection_yr        :: Float64         = 0.0
     T_injection_C             :: Float64         = 950.0
+    T_injection_mode          :: String          = "constant"
+    T_inj_peak_C              :: Float64         = 0.0
+    T_inj_peak_yr             :: Float64         = 50_000.0
+    T_inj_peak_rise_yr        :: Float64         = 10_000.0
+    T_inj_peak_decay_yr       :: Float64         = 10_000.0
+    T_inj_peak_cycles         :: Int             = 1
+    T_inj_peak_interval_yr    :: Float64         = 30_000.0
+    T_inj_sine_C              :: Float64         = 0.0
+    T_inj_sine_period_yr      :: Float64         = 10_000.0
+    T_inj_sine_phase_deg      :: Float64         = 0.0
+    T_inj_noise_C             :: Float64         = 0.0
+    T_inj_noise_corr_yr       :: Float64         = 2_000.0
+    T_inj_noise_seed          :: Int             = 1
+    T_inj_min_C               :: Float64         = 700.0
+    T_inj_max_C               :: Float64         = 1400.0
     injection_target          :: String          = "body"
-    injection_melt_only       :: Bool            = false
+    injection_melt_only       :: Bool            = true
 
     phi_lock                  :: Float64         = 0.40
     phi_perc                  :: Float64         = 0.07
@@ -142,8 +157,23 @@ const MAGERES_OPTION_GROUPS = [
     "Injection" => [
         :injection_period_yr => "Injection period (yr)",
         :first_injection_yr  => "First injection (yr)",
-        :T_injection_C       => "Injection T (°C)",
-        :lens_thickness_m    => "Injected lens thickness (m)",
+        :T_injection_C       => "Injection T (°C, base)",
+        :T_injection_mode    => "Injection T through time",
+        :T_inj_peak_C         => "1st order: Gaussian peak amplitude (°C above base, < 0 for a trough)",
+        :T_inj_peak_yr        => "1st order: peak time (yr)",
+        :T_inj_peak_rise_yr   => "1st order: heating width before the peak, 1σ (yr)",
+        :T_inj_peak_decay_yr  => "1st order: cooling width after the peak, 1σ (yr)",
+        :T_inj_peak_cycles    => "1st order: number of cycles",
+        :T_inj_peak_interval_yr => "1st order: interval between peaks (yr)",
+        :T_inj_sine_C         => "2nd order: sinusoid amplitude (°C)",
+        :T_inj_sine_period_yr => "2nd order: sinusoid period (yr)",
+        :T_inj_sine_phase_deg => "2nd order: sinusoid phase at t = 0 (°)",
+        :T_inj_noise_C       => "3rd order: perturbation, 1σ (°C)",
+        :T_inj_noise_corr_yr => "3rd order: correlation time (yr)",
+        :T_inj_noise_seed    => "3rd order: random seed",
+        :T_inj_min_C         => "Injection T lower bound (°C)",
+        :T_inj_max_C         => "Injection T upper bound (°C)",
+        :lens_thickness_m    => "Injected lens thickness (m, bulk magma; × melt fraction if only melt is injected)",
         :injection_target    => "Injection target",
         :injection_melt_only => "Injected material"],
     "Eruption" => [
@@ -231,7 +261,8 @@ function mageres_convert_option(T::Type, v)
 end
 
 const MAGERES_RETIRED_OPTIONS = (:lens_x_km, :lens_angle_deg, :bulk_group_tol, :eruption_style, :view_top_km,
-                                 :view_bottom_km)
+                                 :view_bottom_km, :T_inj_trend_C, :T_inj_trend_shape, :T_inj_trend_end_yr, :T_inj_event_C,
+                                 :T_inj_event_yr, :T_inj_event_rise_yr, :T_inj_event_decay_yr)
 
 """
     mageres_options_from_dict(d::AbstractDict)
@@ -318,6 +349,18 @@ function mageres_validate_options(o::MAGEResOptions)
     o.hindered_exponent >= 0 || throw(ArgumentError("hindered_exponent must be ≥ 0"))
     o.Ra_crit > 0 && o.Nu_exponent > 0 || throw(ArgumentError("Ra_crit and Nu_exponent must be > 0"))
     o.injection_period_yr >= 0 || throw(ArgumentError("injection_period_yr must be ≥ 0"))
+    o.T_injection_mode in ("constant", "signal") ||
+        throw(ArgumentError("T_injection_mode must be \"constant\" or \"signal\""))
+    o.T_inj_peak_rise_yr > 0 && o.T_inj_peak_decay_yr > 0 ||
+        throw(ArgumentError("the peak heating and cooling widths must be > 0"))
+    o.T_inj_peak_cycles >= 1 || throw(ArgumentError("the number of cycles must be ≥ 1"))
+    (o.T_inj_peak_cycles == 1 || o.T_inj_peak_interval_yr > 0) ||
+        throw(ArgumentError("the interval between peaks must be > 0"))
+    o.T_inj_sine_C >= 0 || throw(ArgumentError("the sinusoid amplitude must be ≥ 0"))
+    o.T_inj_sine_period_yr > 0 || throw(ArgumentError("the sinusoid period must be > 0"))
+    o.T_inj_noise_C >= 0 || throw(ArgumentError("the perturbation amplitude must be ≥ 0"))
+    o.T_inj_noise_corr_yr > 0 || throw(ArgumentError("the perturbation correlation time must be > 0"))
+    o.T_inj_min_C < o.T_inj_max_C || throw(ArgumentError("the injection T lower bound must be below the upper bound"))
     n = length(o.oxides)
     length(o.magma_bulk) == n && length(o.host_bulk) == n ||
         throw(ArgumentError("magma_bulk and host_bulk must have one entry per oxide"))

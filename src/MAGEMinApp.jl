@@ -34,7 +34,7 @@ module MAGEMinApp
 
     pkg_dir = Base.pkgdir(MAGEMinApp)
 
-    const ENABLE_MAGERES = false
+    const ENABLE_MAGERES = true
     const ENABLE_MELTS   = false
     const ENABLE_IGM     = false
     const ENABLE_IGAW    = false
@@ -58,8 +58,8 @@ module MAGEMinApp
     include(joinpath(pkg_dir,"src","SVG_export.jl"))
     include(joinpath(pkg_dir,"src","MonteCarlo_functions.jl"))
     if ENABLE_MAGERES
-        for mageres_file in ("options", "materials", "geometry", "chamber", "quadtree", "remap", "thermal", "thermo",
-                             "state", "coupling", "body", "settling", "eruption", "events", "trace", "zircon", "overpressure", "plotting", "io", "app_live", "app_figures", "methodology")
+        for mageres_file in ("options", "injection_signal", "materials", "geometry", "chamber", "quadtree", "remap", "thermal", "thermo",
+                             "state", "coupling", "body", "settling", "eruption", "events", "trace", "zircon", "eruption_age", "sequence", "overpressure", "plotting", "io", "app_live", "app_figures", "app_sequence", "methodology")
             include(joinpath(pkg_dir, "src", "MAGERes", mageres_file * ".jl"))
         end
     end

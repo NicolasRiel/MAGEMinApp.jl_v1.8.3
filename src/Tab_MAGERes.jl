@@ -33,6 +33,8 @@ const MAGERES_ENUM_FIELDS = Dict{Symbol,Vector{Dict{String,Any}}}(
                           Dict("label" => "Insulated",                       "value" => "insulated")],
     :injection_melt_only => [Dict("label" => "Bulk composition (as defined)", "value" => false),
                              Dict("label" => "Equilibrated melt", "value" => true)],
+    :T_injection_mode => [Dict("label" => "Constant",                                       "value" => "constant"),
+                          Dict("label" => "Time signal (Gaussian peak + sinusoid + noise)", "value" => "signal")],
     :injection_target => [Dict("label" => "Mobile body (sill in place if there is none)", "value" => "body"),
                           Dict("label" => "In place (sill at the chamber centre)",        "value" => "chamber")],
     :fluid_treatment  => [Dict("label" => "Removed",  "value" => "removed"),
@@ -75,6 +77,21 @@ mageres_input_id(f::Symbol) = "mageres-opt-$(f)"
 mageres_row_id(f::Symbol)   = "mageres-row-$(f)"
 
 const MAGERES_CONSTANT_ONLY_FIELDS = (:rho_magma, :cp_magma, :cp_host)
+
+const MAGERES_SIGNAL_FIELDS = (:T_inj_peak_C, :T_inj_peak_yr, :T_inj_peak_rise_yr, :T_inj_peak_decay_yr,
+                               :T_inj_peak_cycles, :T_inj_peak_interval_yr, :T_inj_sine_C,
+                               :T_inj_sine_period_yr, :T_inj_sine_phase_deg, :T_inj_noise_C, :T_inj_noise_corr_yr,
+                               :T_inj_noise_seed, :T_inj_min_C, :T_inj_max_C)
+
+const MAGERES_SIGNAL_INPUTS = (:T_injection_C, :T_injection_mode, MAGERES_SIGNAL_FIELDS..., :injection_period_yr,
+                               :first_injection_yr, :run_time_yr)
+
+"""
+    mageres_signal_row_style(mode)
+
+    Style of the rows of the injection-temperature signal options: hidden unless `mode` is "signal".
+"""
+mageres_signal_row_style(mode) = mode == "signal" ? Dict{String,String}() : Dict("display" => "none")
 
 """
     mageres_row_style(f::Symbol, thermodynamics)
@@ -133,7 +150,8 @@ function mageres_option_row(f::Symbol, label::AbstractString, default)
     end
     return html_div(id       = mageres_row_id(f),
                     children = [mageres_labelled_row(label, control)],
-                    style    = mageres_row_style(f, MAGEResOptions().thermodynamics))
+                    style    = f in MAGERES_SIGNAL_FIELDS ? mageres_signal_row_style(MAGEResOptions().T_injection_mode) :
+                                                            mageres_row_style(f, MAGEResOptions().thermodynamics))
 end
 
 """
@@ -264,6 +282,14 @@ function mageres_config_tab(group::AbstractString, fields)
     for (f, label) in fields
         f in MAGERES_DRAWER_FIELDS && continue
         push!(children, mageres_option_row(f, label, getfield(o, f)))
+    end
+    if group == "Injection"
+        append!(children, [ html_hr(),
+                            html_h1("Injection temperature through time",
+                                    style = Dict("textAlign" => "center", "font-size" => "120%")),
+                            dcc_graph(  id     = "mageres-inj-T-preview-fig",
+                                        figure = mageres_injection_T_figure(o),
+                                        config = Dict("displaylogo" => false))])
     end
     return dbc_tab(tab_id = "mageres-config-$(mageres_group_slug(group))", label = group, children = children)
 end
@@ -532,6 +558,30 @@ function Tab_MAGERes()
                                                                  mageres_graph("mageres-zircon-ages-fig"),
                                                                  mageres_graph("mageres-zircon-spots-fig"),
                                                                  mageres_graph("mageres-zircon-families-fig") ]),
+                                            dbc_tab(label    = "Sequence",
+                                                    children = [
+                                                        html_div("‎ "),
+                                                        dbc_row([
+                                                            dbc_col([
+                                                                dcc_dropdown(   id        = "mageres-seq-group",
+                                                                                options   = MAGERES_SEQ_GROUP_OPTIONS,
+                                                                                value     = "eruption",
+                                                                                clearable = false,
+                                                                                multi     = false),
+                                                            ], width = 3),
+                                                            dbc_col([
+                                                                dbc_button("Sequence table (csv)", id = "mageres-seq-csv-button",
+                                                                           color = "light", n_clicks = 0,
+                                                                           style = Dict("textAlign" => "center",
+                                                                                        "font-size" => "100%",
+                                                                                        "border"    => "1px grey solid")),
+                                                                dcc_download(id = "mageres-seq-csv-download"),
+                                                            ], width = 3),
+                                                        ]),
+                                                        mageres_graph("mageres-zircon-seq-fig"),
+                                                        mageres_graph("mageres-zircon-seq-stats-fig"),
+                                                        mageres_graph("mageres-eruption-age-test-fig"),
+                                                    ]),
                                         ]),
                                     ]),
                             dbc_tab(label    = "Composition",

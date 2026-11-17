@@ -66,6 +66,16 @@ function mageres_injection_volume(o::MAGEResOptions)
 end
 
 """
+    mageres_injection_volume(o::MAGEResOptions, phi::Real)
+
+    Cross-sectional area [m²] actually injected for a bulk lens of `mageres_injection_volume(o)` whose melt fraction
+    at the injection conditions is `phi`: the whole lens, or with `o.injection_melt_only` only its melt
+    (thickness scaled by `phi`).
+"""
+mageres_injection_volume(o::MAGEResOptions, phi::Real) =
+    o.injection_melt_only ? clamp(phi, 0.0, 1.0) * mageres_injection_volume(o) : mageres_injection_volume(o)
+
+"""
     mageres_chamber_area(c::MAGEResChamber)
 
     Cross-sectional area of the chamber [m²].

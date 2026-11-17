@@ -228,7 +228,7 @@ mageres_level(st::MAGEResState) = Float64[k[1] for k in st.grid.leaves]
 function mageres_field_values(st::MAGEResState, field::Symbol)
     o = st.opts
     field == :T        && (T = mageres_temperature(st);
-                           return T, (o.T_surface_C, max(o.T_injection_C, maximum(T))), "T (°C)", "Hot", true)
+                           return T, (o.T_surface_C, max(mageres_injection_T_max(o), maximum(T))), "T (°C)", "Hot", true)
     field == :frac     && return st.grid.frac, (0.0, 1.0), "magma fraction", "Reds", false
     field == :pressure && (P = mageres_pressure_kbar(st); return P, extrema(P), "P (kbar)", "Viridis", false)
     field == :level    && return mageres_level(st), (0.0, Float64(st.grid.Lmax)), "refinement level", "Blues", false

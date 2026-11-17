@@ -197,11 +197,12 @@ $$
 
   Here $\hat{\mathbf x}$ is the normalised molar bulk and $M_{sys}$ the molar mass of the system. Each cell starts
   with $\mathbf Q = \mathbf q(y_c)\,A$ and with the thermodynamic point of the nearest profile depth.
-- **Injected magma:** the injection composition (the magma bulk by default) is equilibrated once at the injection
-  temperature and at the pressure of the chamber centre. That gives the content density of new magma, $\mathbf
-  q_{inj}$. With *Injected material = Equilibrated melt* (`injection_melt_only`), only the melt of that equilibrium
-  is injected: its composition is re-equilibrated at the same pressure and temperature and replaces the bulk. The
-  run stops with an error if the bulk has no melt at those conditions.
+- **Injected magma:** the injection composition (the magma bulk by default) is equilibrated at the injection
+  temperature (Section 12) and at the pressure of the chamber centre. That gives the content density of new magma,
+  $\mathbf q_{inj}$. With *Injected material = Equilibrated melt* (`injection_melt_only`), only the melt of that
+  equilibrium is injected: its composition is re-equilibrated at the same pressure and temperature and replaces the
+  bulk, and its trace elements are those of the melt (Section 12). The run stops with an error if the bulk has no
+  melt at those conditions.
 - The chamber is closed at $t = 0$. The first injection (at `first_injection_yr`) opens it.
 
 ---
@@ -240,6 +241,13 @@ $$
 
 with $w_{lens}$ = `lens_thickness_m`. Each injection raises $T_c$ by $\Delta T_c = V_{inj}/I$. That is exactly
 $w_{lens}$ at the chamber centre, so the vertical accretion rate there is $w_{lens}$/`injection_period_yr`.
+
+$w_{lens}$ is the thickness of the **bulk** magma lens. With *Injected material = Equilibrated melt*, only the melt
+of that lens is injected, so its thickness is scaled by the melt fraction of the injected composition at the
+injection temperature and lens pressure, $\phi_{inj} = V_{melt}/(V_{melt} + V_{solid})$ (Section 12):
+$V_{inj} \rightarrow \phi_{inj}\, V_{inj}$. With a time-varying injection temperature, hotter batches therefore
+deliver more melt. The source layer, the injected-volume series and the overpressure recharge all use this scaled
+volume.
 
 ---
 
@@ -444,7 +452,53 @@ is not used when the cell's composition has shifted by more than 0.02 (same meas
 
 *events.jl, body.jl*
 
-Injections happen every `injection_period_yr`, starting at `first_injection_yr`. Each one does the following:
+Injections happen every `injection_period_yr`, starting at `first_injection_yr`.
+
+**Injection temperature through time** (*injection_signal.jl*). With `T_injection_mode = constant` every batch is
+injected at `T_injection_C`. With `signal`, the temperature of a batch injected at time $t$ [yr] is
+
+$$
+T_{inj}(t) = \mathrm{clamp}\big(T_0 + T_1(t) + T_2(t) + T_3(t),\; T_{min},\; T_{max}\big),
+$$
+
+with $T_0$ = `T_injection_C` and three orders:
+
+- **1st order, Gaussian peak:** heating from the base temperature up to a peak, then cooling back,
+  $T_1 = A\,\exp\!\big(-\tfrac12 (t - t_p)^2/s^2\big)$, with $A$ = `T_inj_peak_C` (negative for a cooling trough),
+  peak time $t_p$ = `T_inj_peak_yr`, and $s$ = `T_inj_peak_rise_yr` before the peak and `T_inj_peak_decay_yr` after
+  it (equal widths give a symmetric Gaussian; a short rise and a long decay give fast heating and slow cooling).
+  The pattern can be repeated: with $N$ = `T_inj_peak_cycles` cycles, peaks sit at $t_p + k\,\Delta$
+  ($k = 0 \dots N-1$, $\Delta$ = `T_inj_peak_interval_yr`) and $T_1 = A \max_k g_k(t)$, where $g_k$ is the
+  unit pulse of peak $k$. Taking the strongest pulse rather than their sum keeps every cycle at amplitude $A$ when
+  pulses overlap.
+- **2nd order, sinusoid:** $T_2 = B \sin(2\pi t/P + \varphi)$, with $B$ = `T_inj_sine_C`, period $P$ =
+  `T_inj_sine_period_yr` and phase $\varphi$ = `T_inj_sine_phase_deg` at $t = 0$.
+- **3rd order, random noise:** an Ornstein–Uhlenbeck process of standard deviation $\sigma$ = `T_inj_noise_C`
+  and correlation time $\tau$ = `T_inj_noise_corr_yr`, drawn from `T_inj_noise_seed` on a grid
+  $t_k = k h$, $h = \max(\tau/4,\, 1\ \text{yr})$:
+  $x_0 = \sigma\,\varepsilon_0$, $x_{k+1} = \rho\, x_k + \sigma\sqrt{1-\rho^2}\,\varepsilon_{k+1}$,
+  $\rho = e^{-h/\tau}$, $\varepsilon_k \sim \mathcal N(0,1)$, linearly interpolated in time.
+
+$T_{min}$, $T_{max}$ (`T_inj_min_C`, `T_inj_max_C`) keep the temperature in the range of the thermodynamic model.
+The signal is a function of the options and time only, so the preview in the Injection tab, a run and its resumption
+all use the same temperatures. The temperature of every injection is stored with its source layer and shown in
+*Vital signs*.
+
+At each injection the injected magma is re-equilibrated with MAGEMin at $T_{inj}(t)$ and the lens pressure (once per
+distinct temperature, to 0.1 °C; memoised). With *Equilibrated melt*, the bulk is equilibrated at $T_{inj}(t)$, its
+melt is re-equilibrated and injected (the lens thickness scaled by the bulk melt fraction at $T_{inj}$, Section 7),
+and its trace elements are those of the melt, by mass balance between melt and solids at that equilibrium:
+
+$$
+C_e^{M} = \frac{C_e^{inj}}{w_M + D_e\, w_S},
+$$
+
+where $C_e^{inj}$ is the injected bulk concentration, $w_M$, $w_S$ the melt and solid mass fractions and $D_e$ the
+solid/melt ratio of element $e$ at that point (fluids carry none). With zircon, the melt Zr is capped at the Zr
+saturation of that melt; the excess stays in the residue as zircon. A cooler injection therefore delivers less melt,
+richer in incompatible elements.
+
+Each injection does the following:
 
 1. **Sill insertion.** The chamber opens by $\Delta T_c = V_{inj}/I$ and the opened band is filled with injected magma
    (Sections 8–9).
@@ -906,8 +960,57 @@ older by the time since they erupted, and the eruptions of the selected output a
 
 The *Trace elements* figure shows each eruption's REE or all trace elements (bulk erupted material, Zr in zircon
 included), normalised to CI chondrite (McDonough & Sun 1995), to primitive mantle (Sun & McDonough 1989, or McDonough & Sun 1995) or to the
-injected magma, with the injected magma as reference. All zircon and
-trace-element figures show only the eruptions of the selected output, i.e. those since the previous output.
+injected magma, with the injected magma as reference. The zircon ages and trace-element figures show only the
+eruptions of the selected output, i.e. those since the previous output.
+
+**Eruption sequence (Eruption → Sequence),** *sequence.jl, eruption_age.jl, app_sequence.jl*. These figures cover
+every zircon-bearing eruption up to the selected output, not only those of the selected output. Ages are measured
+from the reference time $t_{ref}$ as above, and the eruptions of the selected output are drawn in red. A sample is
+one eruption, or, with "one sample per output", the eruptions of one output merged as above. Its eruption age is
+$a_e = (t_{ref} - t_e)/10^3$ kyr, where $t_e$ is the time of its (last) eruption. Only the single spots are used; the
+zoned grains are not drawn.
+
+1. **Zircon age vs eruption age.** Up to 40 samples, one violin of the single-spot ages per sample at its eruption
+   age, with the spots; above, the 5–95 % and 25–75 % bands and the median of the spot ages along the sequence, with
+   the spots of the selected output. The median and 5–95 % ages of the erupted zircon mass (no analytical noise) and
+   the line zircon age = eruption age are drawn on both. The distance above that line is the time between
+   crystallisation and eruption. The right axis shows the temperature of every injection (Section 12).
+2. **Zircon statistics.** From the erupted zircon mass, without analytical noise, each age bin being spread uniformly
+   over the part of the bin before $t_e$ (the moments include that spread exactly):
+   - the 5–95 % ages and the mass-weighted mean age $\bar a$, shown relative to the eruption: the mean residence time
+     is $\bar a - a_e$; the age of the youngest zircon;
+   - the skewness and excess kurtosis of the age distribution, which depend on the magma flux and reservoir size
+     (Caricchi et al. 2014);
+   - the erupted zircon mass split into three parts that add up to 100 %: autocrysts (crystallised since the
+     previous eruption), antecrysts (crystallised before it, i.e. recycled from an earlier stage of the reservoir) and
+     inherited zircon. In the csv table, `antecryst_fraction` is the antecryst share of the non-inherited zircon and
+     `inherited_fraction` the inherited share of all zircon.
+
+   The injection temperature is drawn on the right axis of the top panel, and each panel has its legend below it.
+
+   From the synthetic spots: the weighted mean ± 2σ and the MSWD.
+3. **Eruption-age estimators.** The eruption age is estimated from the synthetic spots of each sample and compared with
+   $a_e$:
+   - **youngest grain:** the youngest spot and its σ;
+   - **youngest cluster YC2σ(3+)** (Dickinson & Gehrels 2009): the weighted mean of the youngest group of at least
+     three spots that overlap at 2σ;
+   - **weighted mean** of all autocryst and antecryst spots;
+   - **Bayesian** (Keller et al. 2018): the spots are taken as draws from a uniform crystallisation distribution
+     between the ages $a < b$, each observed with its Gaussian σ, so that the likelihood of a spot $x_i$ is
+     $$
+     p(x_i \mid a, b) = \frac{\Phi\big((b - x_i)/\sigma_i\big) - \Phi\big((a - x_i)/\sigma_i\big)}{b - a}.
+     $$
+     $(a, b)$ are sampled by Metropolis with a flat prior (20 000 steps, the first 5 000 used to tune the step size
+     and discarded). The eruption age is the posterior mean of $a$, the end of crystallisation, and its σ the
+     posterior standard deviation.
+
+   The top panel shows estimate − $a_e$ ± 2σ per sample, with the mean bias, RMS error and fraction within 2σ of each
+   estimator. The lower panels repeat the test with random subsets of $N$ spots (N = 3 … 1000, up to the number of
+   synthetic grains; 8 subsets per sample, at most 20 samples spread over the sequence, 4 000 Metropolis steps), and
+   show the median absolute error and the 2σ coverage against $N$. Results are memoised per eruption.
+
+The **Sequence table (csv)** button writes one row per sample: eruption times, age, erupted area and temperature,
+spot counts, the statistics above, and every estimate with its σ and error.
 
 ---
 
@@ -1106,8 +1209,15 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 |---|---|---|
 | `injection_period_yr` | 1000 | time between injections |
 | `first_injection_yr` | 0 | first injection |
-| `T_injection_C` |  1200  | injection temperature |
-| `lens_thickness_m` | 100 | thickness of each injected lens at its centre |
+| `T_injection_C` |  1200  | injection temperature (base of the signal) |
+| `T_injection_mode` | constant | constant temperature, or time signal |
+| `T_inj_peak_C`, `T_inj_peak_yr` | 0, 50 000 | 1st order: Gaussian peak amplitude above the base, and peak time |
+| `T_inj_peak_rise_yr`, `T_inj_peak_decay_yr` | 10 000, 10 000 | 1st order: 1σ before (heating) and after (cooling) the peak |
+| `T_inj_peak_cycles`, `T_inj_peak_interval_yr` | 1, 30 000 | 1st order: number of repeated peaks, and time between peaks |
+| `T_inj_sine_C`, `T_inj_sine_period_yr`, `T_inj_sine_phase_deg` | 0, 10 000, 0 | 2nd order: sinusoid amplitude, period, phase |
+| `T_inj_noise_C`, `T_inj_noise_corr_yr`, `T_inj_noise_seed` | 0, 2 000, 1 | 3rd order: 1σ, correlation time, seed |
+| `T_inj_min_C`, `T_inj_max_C` | 700, 1400 | bounds of the injection temperature |
+| `lens_thickness_m` | 100 | thickness of each injected (bulk) lens at its centre; × melt fraction with equilibrated-melt injection |
 | `injection_target` | body | mobile body (sill in place if none) or in place |
 | `injection_melt_only` | off | inject the bulk as defined, or only its equilibrated melt |
 
@@ -1243,6 +1353,8 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
   [doi:10.1093/petrology/egu036](https://doi.org/10.1093/petrology/egu036)
 - Burgisser, A., & Bergantz, G. W. (2011). A rapid mechanism to remobilize and homogenize highly crystalline magma
   bodies. *Nature*, 471, 212–215. [doi:10.1038/nature09799](https://doi.org/10.1038/nature09799)
+- Caricchi, L., Simpson, G., & Schaltegger, U. (2014). Zircons reveal magma fluxes in the Earth's crust. *Nature*,
+  511, 457–461.
 - Cheadle, M. J., Elliott, M. T., & McKenzie, D. (2004). Percolation threshold and permeability of crystallizing
   igneous rocks: the importance of textural equilibrium. *Geology*, 32, 757–760.
   [doi:10.1130/G20495.1](https://doi.org/10.1130/G20495.1)
@@ -1250,6 +1362,8 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
   Mineralogy and Petrology*, 177. [doi:10.1007/s00410-022-01925-6](https://doi.org/10.1007/s00410-022-01925-6)
 - Degruyter, W., & Huber, C. (2014). A model for eruption frequency of upper crustal silicic magma chambers. *Earth
   and Planetary Science Letters*, 403, 117–130. [doi:10.1016/j.epsl.2014.06.047](https://doi.org/10.1016/j.epsl.2014.06.047)
+- Dickinson, W. R., & Gehrels, G. E. (2009). Use of U–Pb ages of detrital zircons to infer maximum depositional ages
+  of strata: a test against a Colorado Plateau Mesozoic database. *Earth and Planetary Science Letters*, 288, 115–125.
 - Druitt, T. H., & Sparks, R. S. J. (1984). On the formation of calderas during ignimbrite eruptions. *Nature*, 310,
   679–681. [doi:10.1038/310679a0](https://doi.org/10.1038/310679a0)
 - Giordano, D., Russell, J. K., & Dingwell, D. B. (2008). Viscosity of magmatic liquids: a model. *Earth and Planetary
@@ -1260,6 +1374,8 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 - Jellinek, A. M., & DePaolo, D. J. (2003). A model for the origin of large silicic magma chambers: precursors of
   caldera-forming eruptions. *Bulletin of Volcanology*, 65, 363–381.
   [doi:10.1007/s00445-003-0277-y](https://doi.org/10.1007/s00445-003-0277-y)
+- Keller, C. B., Schoene, B., & Samperton, K. M. (2018). A stochastic sampling approach to zircon eruption age
+  interpretation. *Geochemical Perspectives Letters*, 8, 31–35.
 - Kerr, R. C. (1995). Convective crystal dissolution. *Contributions to Mineralogy and Petrology*, 121, 237–246.
   [doi:10.1007/BF02688239](https://doi.org/10.1007/BF02688239)
 - Lejeune, A.-M., & Richet, P. (1995). Rheology of crystal-bearing silicate melts: an experimental study at high
