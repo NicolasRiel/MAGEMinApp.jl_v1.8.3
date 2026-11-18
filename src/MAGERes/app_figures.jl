@@ -239,6 +239,41 @@ function mageres_diagnostics_figure(S::MAGEResSeries; te::Bool = false)
 end
 
 """
+    mageres_fill_figure(outputs)
+
+    Volume consistency and assimilation at every stored output (`MAGEResOutput`s): fill ratios m/(ρA) of the mobile
+    body, of the mush and cumulate and of the whole chamber, and the body melt Zr supersaturation C/C_sat (left axis,
+    1 = consistent / saturated), and the host-origin mass fraction of the body [%] (right axis).
+"""
+function mageres_fill_figure(outputs)
+    isempty(outputs) && return mageres_placeholder_figure("No run yet")
+    outputs[end].state.thermo === nothing &&
+        return mageres_placeholder_figure("Volume diagnostics require MAGEMin thermodynamics")
+    t = [o.t for o in outputs]
+    D = [mageres_volume_diagnostics(o.state) for o in outputs]
+    f(k) = mageres_finite_or_nothing([getfield(d, k) for d in D])
+    traces = GenericTrace[
+        scatter(; x = t, y = f(:fill_body), name = "fill ratio, mobile body", mode = "lines+markers",
+                  marker = attr(size = 3)),
+        scatter(; x = t, y = f(:fill_pile), name = "fill ratio, mush and cumulate", mode = "lines+markers",
+                  marker = attr(size = 3)),
+        scatter(; x = t, y = f(:fill_chamber), name = "fill ratio, chamber", mode = "lines",
+                  line = attr(dash = "dot")),
+        scatter(; x = t, y = f(:supersat_body), name = "body melt Zr C/C_sat", mode = "lines",
+                  line = attr(dash = "dash")),
+        scatter(; x = t, y = mageres_finite_or_nothing([100 * d.host_body for d in D]),
+                  name = "host-origin mass in the body (%)", mode = "lines", yaxis = "y2"),
+    ]
+    layout          = mageres_series_layout("Volume consistency and assimilation (stored outputs)",
+                                            "m/(ρA), C/C_sat")
+    layout[:shapes] = [attr(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = 1, y1 = 1,
+                            line = attr(color = "grey", dash = "dot", width = 1))]
+    layout[:yaxis2] = attr(title = "host-origin mass (%)", overlaying = "y", side = "right", rangemode = "tozero",
+                           exponentformat = "power")
+    return PlotlyJS.plot(traces, layout)
+end
+
+"""
     mageres_convection_figure(S::MAGEResSeries)
 
     Time series of the Nusselt number (log scale) and of mobile body, percolated melt, settled crystal and

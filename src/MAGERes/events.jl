@@ -166,7 +166,7 @@ function mageres_inject!(st::MAGEResState)
     st.chamber.n_injections += 1
     st.erupt_armed           = true
     push!(st.source.layers, MAGEResLayer(st.t, V, T, MAGERES_SYMMETRY .* led.injected[mageres_ox_rows(st)],
-                                         MAGERES_SYMMETRY .* led.injected[mageres_tracer_rows(st)]))
+                                         MAGERES_SYMMETRY .* mageres_layer_tracers(st, led.injected)))
     mageres_record!(st, :injection, V)
     return V
 end
@@ -185,7 +185,7 @@ function mageres_extract!(st::MAGEResState, V::Float64; mode::Symbol = :remove)
     st.chamber.n_extractions += 1
     Tx = led.extracted[MAGERES_IC] > 0 ? led.extracted[MAGERES_IE] / led.extracted[MAGERES_IC] - MAGERES_T0_K : NaN
     push!(st.pluton.layers, MAGEResLayer(st.t, Vx, Tx, MAGERES_SYMMETRY .* led.extracted[mageres_ox_rows(st)],
-                                         MAGERES_SYMMETRY .* led.extracted[mageres_tracer_rows(st)]))
+                                         MAGERES_SYMMETRY .* mageres_layer_tracers(st, led.extracted)))
     mageres_record!(st, :extraction, Vx)
     return Vx
 end

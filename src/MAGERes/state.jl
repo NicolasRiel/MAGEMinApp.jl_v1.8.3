@@ -339,7 +339,8 @@ mageres_grid_energy(st::MAGEResState) = sum(@view st.Q[MAGERES_IE, :])
     mageres_budget(st::MAGEResState)
 
     NamedTuple of chamber, grid, source, pluton and outflow areas, energies, relative host, budget, grid,
-    energy, enthalpy, oxide mass and trace-element mass errors, and mean/max/min temperatures [°C].
+    energy, enthalpy, oxide mass and trace-element mass errors (NaN for a stored output without its zircon rows), and
+    mean/max/min temperatures [°C].
 """
 function mageres_budget(st::MAGEResState)
     g            = st.grid
@@ -369,7 +370,7 @@ function mageres_budget(st::MAGEResState)
               energy_error   = (total[MAGERES_IE] - expct[MAGERES_IE]) / abs(st.ledger.initial[MAGERES_IE]),
               enthalpy_error = (total[MAGERES_IH] - expct[MAGERES_IH]) / abs(st.ledger.initial[MAGERES_IH]),
               mass_error     = mass_err,
-              te_error       = mageres_te_error(st, total, expct),
+              te_error       = size(st.Q, 1) < length(expct) ? NaN : mageres_te_error(st, total, expct),
               T_mean_chamber = Am > 0 ? sum(T .* g.frac .* g.area) / Am : NaN,
               T_max          = maximum(T),
               T_min          = minimum(T))
@@ -385,4 +386,47 @@ function mageres_record!(st::MAGEResState, kind::Symbol, area::Float64, message:
     push!(st.history, MAGEResEventRecord(st.t, kind, area, b.host_error, b.budget_error, b.grid_error, b.energy_error,
                                          b.mass_error, b.te_error, mageres_ncells(st.grid), message))
     return b
+end
+
+"""
+    mageres_volume_diagnostics(st::MAGEResState)
+
+    Volume consistency and assimilation of `st`: fill ratio (material volume m/ρ over cell area) of the mobile body,
+    of the chamber cells fully inside the chamber outside the body (mush and cumulate) and of the whole chamber
+    (cells weighted by magma fraction); host-origin mass fraction of the body; area-weighted mean Zr
+    supersaturation C/C_sat of the body melt. NaN where undefined.
+"""
+function mageres_volume_diagnostics(st::MAGEResState)
+    th  = st.thermo
+    nan = NaN
+    th === nothing && return (fill_body = nan, fill_pile = nan, fill_chamber = nan, host_body = nan, supersat_body = nan)
+    g  = st.grid
+    n  = mageres_ncells(g)
+    m  = [mageres_cell_mass(st, c) for c in 1:n]
+    V  = [th.points[c].rho > 0 ? m[c] / th.points[c].rho : nan for c in 1:n]
+    ratio(cs, w) = (a = sum((w(c) * g.area[c] for c in cs); init = 0.0);
+                    a > 0 ? sum(w(c) * V[c] for c in cs) / a : nan)
+    body = [c for c in 1:n if st.body[c] && isfinite(V[c])]
+    pile = [c for c in 1:n if !st.body[c] && g.frac[c] >= 1 - 1e-6 && isfinite(V[c])]
+    ch   = [c for c in 1:n if g.frac[c] > 0 && isfinite(V[c])]
+    hb   = isempty(body) ? nan : sum(st.Q[mageres_host_row(st), c] for c in body) / sum(m[c] for c in body)
+    S  = nan
+    te = th.te
+    if te !== nothing && te.zircon && !isempty(body)
+        T  = mageres_temperature(st)
+        iz = mageres_te_rows(st)[te.i_zr]
+        sw, sa = 0.0, 0.0
+        for c in body
+            q = th.points[c].te
+            (q.w_M > 0 && isfinite(q.C_sat)) || continue
+            meff = m[c] * (q.w_M + q.D[te.i_zr] * q.w_S)
+            Cs   = 1e-6 * mageres_zr_saturation(th.points[c], T[c])
+            (meff > 0 && Cs > 0) || continue
+            sw += g.area[c] * st.Q[iz, c] / meff / Cs
+            sa += g.area[c]
+        end
+        sa > 0 && (S = sw / sa)
+    end
+    return (fill_body = ratio(body, c -> 1.0), fill_pile = ratio(pile, c -> 1.0), fill_chamber = ratio(ch, c -> g.frac[c]),
+            host_body = hb, supersat_body = S)
 end

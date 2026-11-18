@@ -54,6 +54,14 @@ end
     include(joinpath(@__DIR__, "test_injection_signal.jl"))
 end
 
+@testset "MAGERes zircon nucleation" begin
+    include(joinpath(@__DIR__, "test_zircon_nucleation.jl"))
+end
+
+@testset "MAGERes zircon assimilation" begin
+    include(joinpath(@__DIR__, "test_zircon_assimilation.jl"))
+end
+
 @testset "threaded" begin
     # Do a dummy `@test true`:
     # If the process errors out the testset would error out as well

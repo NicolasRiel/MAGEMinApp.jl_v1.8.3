@@ -608,6 +608,8 @@ function Tab_MAGERes()
                                                     children = [ mageres_graph("mageres-vital-signs-fig") ]),
                                             dbc_tab(label    = "Convection",
                                                     children = [ mageres_graph("mageres-convection-fig") ]),
+                                            dbc_tab(label    = "Volume & assimilation",
+                                                    children = [ mageres_graph("mageres-fill-fig") ]),
                                             dbc_tab(label    = "Energy budget",
                                                     children = [ mageres_graph("mageres-energy-budget-fig") ]),
                                         ]),

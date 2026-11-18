@@ -432,11 +432,12 @@ function mageres_extend_zircon_bins!(st::MAGEResState)
     b0 = te.n_bins
     nb > b0 || return st
     ne = length(te.elements)
-    n0 = MAGERES_IN0 + length(st.opts.oxides) - 1
+    n0 = first(mageres_tracer_rows(st)) - 1
     l0 = ne + te.n_fam * (2 + b0)
     l1 = ne + te.n_fam * (2 + nb)
     at(k) = k <= ne ? k : (j = k - ne - 1; ne + (j ÷ (2 + b0)) * (2 + nb) + j % (2 + b0) + 1)
     function tracers(v::AbstractVector{Float64})
+        length(v) == l0 + 1 && return vcat(tracers(v[1:l0]), v[end])
         length(v) == l0 || return v
         w = zeros(l1)
         for k in 1:l0

@@ -60,14 +60,14 @@ end
     mageres_parcel(st::MAGEResState, c::Int, n::Vector{Float64}, h_phase::Float64, kind::Symbol)
 
     Conserved-quantity vector of a parcel of oxide moles `n` of phase group `kind` (:melt, :solid or :fluid) taken
-    from cell `c`: energy and heat capacity scaled by its mass fraction, enthalpy from the phase specific enthalpy
-    `h_phase`, its trace elements and zircon, and its phase volume with the overpressure trigger.
+    from cell `c`: energy, heat capacity and host-origin mass scaled by its mass fraction, enthalpy from the phase
+    specific enthalpy `h_phase`, its trace elements and zircon, and its phase volume with the overpressure trigger.
 """
 function mageres_parcel(st::MAGEResState, c::Int, n::Vector{Float64}, h_phase::Float64, kind::Symbol)
     m = sum(n .* st.thermo.Mox)
     r = m / mageres_cell_mass(st, c)
     x = vcat(r * st.Q[MAGERES_IE, c], r * st.Q[MAGERES_IC, c], m * mageres_phase_enthalpy_now(st, c, h_phase), n,
-             mageres_parcel_tracers(st, c, m, kind))
+             r * st.Q[mageres_host_row(st), c], mageres_parcel_tracers(st, c, m, kind))
     mageres_has_volume_row(st.opts) || return x
     return vcat(x, min(m / mageres_phase_density(st.thermo.points[c], kind), st.Q[mageres_volume_row(st), c]))
 end

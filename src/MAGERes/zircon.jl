@@ -129,8 +129,10 @@ end
 
     Grow, nucleate or dissolve the zircon families of cell `c` over `dt` [s] at `T_C` [°C], exchanging Zr with the
     melt (and the solids in equilibrium with it) by rate-limited relaxation toward saturation, shared between the
-    families by their exchange rates. Growth goes to age bin `jb`, nucleation to family `fn`, and dissolution removes
-    the youngest zircon of each family first. Returns the zircon mass change [kg].
+    families by their exchange rates. Growth goes to age bin `jb` and dissolution removes the youngest zircon of each
+    family first. When the melt exceeds `zircon_nucleation_supersat` × saturation, grains of radius
+    `MAGERES_ZRC_NUC_RADIUS` nucleate once per step in family `fn` up to `zircon_nucleation_density` per m³ of melt,
+    whether or not the cell already holds zircon. Returns the zircon mass change [kg].
 """
 function mageres_zircon_cell!(st::MAGEResState, c::Int, T_C::Float64, dt::Float64, jb::Int, fn::Int,
                               convecting::Bool)
@@ -158,6 +160,7 @@ function mageres_zircon_cell!(st::MAGEResState, c::Int, T_C::Float64, dt::Float6
     dMf   = zeros(K)
     t     = 0.0
     total = 0.0
+    nucleated = false
     for _ in 1:MAGERES_ZRC_MAX_SUBSTEPS
         t < dt || break
         Z = Q[iz, c]
@@ -171,15 +174,17 @@ function mageres_zircon_cell!(st::MAGEResState, c::Int, T_C::Float64, dt::Float6
             kf[f] = a > 0 ? mageres_zircon_rate_constant(a, N, D, Pe, p.rho_M, Cs, m_eff) : 0.0
         end
         k = sum(kf)
-        if C > Cs && k <= 0
-            Nn = o.zircon_nucleation_density * VM
+        if !nucleated && C > o.zircon_nucleation_supersat * Cs
+            nucleated = true
+            Nn = o.zircon_nucleation_density * VM - Q[rN[fn], c]
             ms = Nn * MAGERES_ZRC_RHO * 4 / 3 * π * MAGERES_ZRC_NUC_RADIUS^3
-            Cz * ms < Z - Cs * m_eff || break
-            Q[rN[fn], c]      = Nn
-            Q[rz[fn][jb], c] += ms
-            Q[iz, c]         -= Cz * ms
-            total            += ms
-            continue
+            if Nn > 0 && Cz * ms < Z - Cs * m_eff
+                Q[rN[fn], c]     += Nn
+                Q[rz[fn][jb], c] += ms
+                Q[iz, c]         -= Cz * ms
+                total            += ms
+                continue
+            end
         end
         k > 0 || break
         h     = dt - t

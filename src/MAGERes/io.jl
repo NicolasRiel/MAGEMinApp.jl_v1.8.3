@@ -160,6 +160,41 @@ function mageres_save_simulation(path::AbstractString, snap)
 end
 
 """
+    mageres_add_host_row!(st::MAGEResState)
+
+    Insert the host-origin mass row into a state saved before it existed: in the cells (estimated as the host-rock
+    share (1 - frac) of each cell's mass), the ledger (initial content = that total), the host profile (all its mass)
+    and the injected magma (none); layers get a NaN host mass. Leaves current states unchanged. Returns `st`.
+"""
+function mageres_add_host_row!(st::MAGEResState)
+    th = st.thermo
+    th === nothing && return st
+    r  = mageres_host_row(st)
+    nf = r + mageres_n_tracers(th.te) + (mageres_has_volume_row(st.opts) ? 1 : 0)
+    length(st.ledger.initial) == nf - 1 || return st
+    ins(v::AbstractVector{Float64}, x::Float64) = vcat(v[1:r-1], x, v[r:end])
+    host = [(1 - st.grid.frac[c]) * mageres_cell_mass(st, c) for c in 1:mageres_ncells(st.grid)]
+    st.Q = vcat(st.Q[1:r-1, :], permutedims(host), st.Q[r:end, :])
+    L    = st.ledger
+    for f in (:initial, :injected, :extracted, :outflow, :inflow, :fluid)
+        setfield!(L, f, ins(getfield(L, f), 0.0))
+    end
+    L.initial[r] = sum(host)
+    pd   = th.profile.density
+    mass = [mageres_density_mass(pd[:, j], th.Mox) for j in axes(pd, 2)]
+    th.profile           = MAGEResHostProfile(th.profile.y, vcat(pd[1:r-1, :], permutedims(mass), pd[r:end, :]),
+                                              th.profile.points)
+    th.injection_density = ins(th.injection_density, 0.0)
+    nt = mageres_n_tracers(th.te)
+    pad(C::MAGEResColumn) = MAGEResColumn([length(l.tracers) == nt ? MAGEResLayer(l.t, l.area, l.T, l.moles,
+                                                                                  vcat(l.tracers, NaN)) : l
+                                           for l in C.layers])
+    st.source = pad(st.source)
+    st.pluton = pad(st.pluton)
+    return st
+end
+
+"""
     mageres_load_simulation(path::AbstractString)
 
     Read a simulation saved by `mageres_save_simulation` (any format up to `MAGERES_RUN_FORMAT`). Returns a finished
@@ -180,5 +215,9 @@ function mageres_load_simulation(path::AbstractString)
     live.n_events        = d["n_events"]
     live.resume          = get(d, "resume", nothing)
     live.resume_ns       = get(d, "resume_ns", 0)
+    for o in live.outputs
+        mageres_add_host_row!(o.state)
+    end
+    live.resume === nothing || mageres_add_host_row!(live.resume)
     return live, mageres_options_from_dict(Dict{String,Any}(string(k) => v for (k, v) in d["options"]))
 end

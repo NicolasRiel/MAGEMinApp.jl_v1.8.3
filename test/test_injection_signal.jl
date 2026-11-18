@@ -156,8 +156,9 @@ end
         te.zircon && isfinite(pb.te.C_sat) && @test Cm[te.i_zr] <= pb.te.C_sat + 1e-9
         MI.mageres_injection_equilibrium!(th, o, T)
         rho = MI.mageres_density_mass(th.injection_density, th.Mox)
-        r   = MI.MAGERES_IN0 + length(o.oxides) .+ (0:length(te.elements)-1)
+        r   = MI.MAGERES_IN0 + length(o.oxides) + 1 .+ (0:length(te.elements)-1)
         @test th.injection_density[r] ≈ rho .* Cm .* 1e-6 rtol = 1e-6
+        @test th.injection_density[MI.MAGERES_IN0 + length(o.oxides)] == 0.0
         @test th.injection.frac_M > 0.8
     end
     phi880  = MI.mageres_injection_equilibrium!(th, o, 880.0)
@@ -170,7 +171,7 @@ end
     i_rb = findfirst(==("Rb"), te.elements)
     d880 = (MI.mageres_injection_equilibrium!(th, o, 880.0); copy(th.injection_density))
     d1000 = (MI.mageres_injection_equilibrium!(th, o, 1000.0); copy(th.injection_density))
-    r = MI.MAGERES_IN0 + length(o.oxides) .+ (0:length(te.elements)-1)
+    r = MI.MAGERES_IN0 + length(o.oxides) + 1 .+ (0:length(te.elements)-1)
     @test d880[r][i_rb] / MI.mageres_density_mass(d880, th.Mox) > d1000[r][i_rb] / MI.mageres_density_mass(d1000, th.Mox)
     MI.mageres_injection_equilibrium!(th, o, 880.0)
     @test th.injection_density == d880

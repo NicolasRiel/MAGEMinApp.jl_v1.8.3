@@ -308,6 +308,14 @@ function mageres_mix_body_enthalpy!(st::MAGEResState)
 end
 
 """
+    mageres_material_volume(st::MAGEResState, c::Int)
+
+    Material volume [m²] of cell `c`: its mass over its density, the cell area when the density is unknown.
+"""
+mageres_material_volume(st::MAGEResState, c::Int) =
+    (p = st.thermo.points[c]; p.rho > 0 ? mageres_cell_mass(st, c) / p.rho : st.grid.area[c])
+
+"""
     mageres_effective_melt(st::MAGEResState, c::Int, melt::Vector{Float64})
 
     Melt fraction of cell `c` remaining after subtracting the melt already extracted this step
@@ -403,12 +411,79 @@ function mageres_compact_piles!(st::MAGEResState, dt::Float64, melt::Vector{Floa
     return pile
 end
 
+const MAGERES_DISAGG_HOST_FRAC = 0.5
+
+"""
+    mageres_zircon_rows(st::MAGEResState)
+
+    Rows of `st.Q` holding the zircon of every family (grain numbers and masses); empty without zircon.
+"""
+function mageres_zircon_rows(st::MAGEResState)
+    te = mageres_te(st)
+    (te === nothing || !te.zircon) && return 1:0
+    return mageres_zrc_N_row(st, 1):last(mageres_zrc_mass_rows(st, te.n_fam))
+end
+
+"""
+    mageres_disaggregation_release(o::MAGEResOptions, phi::Float64)
+
+    Fraction of the zircon of a partially molten host cell with melt fraction `phi` that the drained melt can reach:
+    0 at `phi_perc`, rising linearly to 1 at `phi_disaggregation`.
+"""
+mageres_disaggregation_release(o::MAGEResOptions, phi::Float64) =
+    clamp((phi - o.phi_perc) / (o.phi_disaggregation - o.phi_perc), 0.0, 1.0)
+
+"""
+    mageres_disaggregate!(st::MAGEResState, conn::BitVector, melt::Vector{Float64})
+
+    Assimilate the host-rock cells connected to the mobile body (`conn`) whose melt fraction reached
+    `phi_disaggregation` and that still hold mostly host-origin mass: the whole content of such a cell (melt, crystals,
+    zircon) is exchanged with the same material volume of mobile-body magma, taken from every body cell in proportion
+    to its material volume (at most `MAGERES_ROUTE_MAX_SWAP` of the body), and spread over the body cells the same way.
+    Returns the assimilated cells.
+"""
+function mageres_disaggregate!(st::MAGEResState, conn::BitVector, melt::Vector{Float64})
+    th   = st.thermo
+    o    = st.opts
+    g    = st.grid
+    b    = findall(st.body)
+    done = Int[]
+    isempty(b) && return done
+    rh = mageres_host_row(st)
+    for c in 1:mageres_ncells(g)
+        (conn[c] && !st.body[c] && g.frac[c] < 0.5) || continue
+        mageres_effective_melt(st, c, melt) >= o.phi_disaggregation || continue
+        mc = mageres_cell_mass(st, c)
+        (mc > 0 && st.Q[rh, c] >= MAGERES_DISAGG_HOST_FRAC * mc) || continue
+        Vb = [mageres_material_volume(st, k) for k in b]
+        VB = sum(Vb)
+        Vh = mageres_material_volume(st, c)
+        (VB > 0 && Vh > 0) || continue
+        s  = min(1.0, MAGERES_ROUTE_MAX_SWAP * VB / Vh)
+        fx = s * Vh / VB
+        X  = s .* st.Q[:, c]
+        Y  = fx .* vec(sum(st.Q[:, b]; dims = 2))
+        for (j, k) in enumerate(b)
+            @views st.Q[:, k] .= (1 - fx) .* st.Q[:, k] .+ X .* (Vb[j] / VB)
+            th.needs_remin[k] = true
+        end
+        @views st.Q[:, c] .+= Y .- X
+        th.needs_remin[c]  = true
+        st.donor[c]        = true
+        st.restite_frac[c] = 1.0
+        push!(done, c)
+    end
+    return done
+end
+
 """
     mageres_percolate!(st::MAGEResState, dt::Float64)
 
     Extract by Darcy percolation, over `dt` [s], the melt above `phi_perc` from cells connected to the
-    mobile body through partially molten cells; melt from chamber cells is redistributed into the body, melt from host cells is injected
-    as a new event. Returns the injected full-section melt area [m^2].
+    mobile body through partially molten cells; melt from chamber cells is redistributed into the body, melt from host
+    cells is injected as a new event and carries the share `mageres_disaggregation_release` × drained melt fraction of
+    the host cell's zircon. Host cells at `phi_disaggregation` are assimilated whole first (`mageres_disaggregate!`).
+    Returns the injected full-section melt area [m^2].
 """
 function mageres_percolate!(st::MAGEResState, dt::Float64)
     th = st.thermo
@@ -422,9 +497,12 @@ function mageres_percolate!(st::MAGEResState, dt::Float64)
     pooled   = zeros(size(st.Q, 1))
     internal = zeros(size(st.Q, 1))
     pile     = mageres_compact_piles!(st, dt, melt, internal)
+    gone_all = falses(mageres_ncells(g))
+    gone_all[mageres_disaggregate!(st, conn, melt)] .= true
+    zr       = mageres_zircon_rows(st)
     V        = 0.0
     for c in 1:mageres_ncells(g)
-        (conn[c] && !body[c] && !pile[c]) || continue
+        (conn[c] && !body[c] && !pile[c] && !gone_all[c]) || continue
         p   = th.points[c]
         ms  = p.frac_M_vol + p.frac_S_vol
         phi = ms > 0 ? max(melt[c] - st.melt_out[c] / ms, 0.0) : 0.0
@@ -448,6 +526,14 @@ function mageres_percolate!(st::MAGEResState, dt::Float64)
         if g.frac[c] >= 0.5
             internal .+= out
         else
+            sz = mageres_disaggregation_release(o, phi) * dphi
+            if sz > 0 && all(iszero, @view out[zr])
+                for r in zr
+                    z           = sz * st.Q[r, c]
+                    st.Q[r, c] -= z
+                    out[r]     += z
+                end
+            end
             pooled .+= out
             V       += mg / p.rho_M
             st.restite_frac[c] = 1.0

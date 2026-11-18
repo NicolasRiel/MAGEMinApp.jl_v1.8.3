@@ -75,6 +75,7 @@ Base.@kwdef mutable struct MAGEResOptions
     phi_lock                  :: Float64         = 0.40
     phi_perc                  :: Float64         = 0.07
     phi_erupt                 :: Float64         = 0.60
+    phi_disaggregation        :: Float64         = 0.40
     erupt_frac                :: Float64         = 0.20
     erupt_crystal_frac        :: Float64         = 1.0
     fluid_treatment           :: String          = "removed"
@@ -112,6 +113,7 @@ Base.@kwdef mutable struct MAGEResOptions
     te_host_ppm               :: Vector{Float64} = copy(MAGERES_TE_HOST)
     zircon_age_bin_yr         :: Float64         = 1000.0
     zircon_nucleation_density :: Float64         = 1e8
+    zircon_nucleation_supersat :: Float64        = 1.1
     zircon_host_radius_um     :: Float64         = 50.0
     zircon_inherited_age_Ma   :: Float64         = 300.0
     zircon_synthetic_grains   :: Int             = 100
@@ -180,6 +182,7 @@ const MAGERES_OPTION_GROUPS = [
         :phi_lock               => "Lock-up melt fraction (vol)",
         :phi_perc               => "Percolation threshold (melt vol)",
         :phi_erupt              => "Eruptible melt fraction (vol, mobile-body mean)",
+        :phi_disaggregation     => "Host disaggregation melt fraction (vol; wall rock assimilated above it)",
         :erupt_frac             => "Erupted fraction per event (vol of mobile body)",
         :erupt_crystal_frac     => "Erupted crystal fraction (0 melt only, 1 bulk)",
         :fluid_treatment        => "Fluid treatment",
@@ -213,6 +216,7 @@ const MAGERES_OPTION_GROUPS = [
         :zrsat_mod                 => "Zr saturation (none = no zircon)",
         :zircon_age_bin_yr         => "Zircon age bin (yr)",
         :zircon_nucleation_density => "Zircon nucleation density (grains/m³ of melt)",
+        :zircon_nucleation_supersat => "Zircon nucleation supersaturation (C/C_sat)",
         :zircon_host_radius_um     => "Inherited zircon radius (µm)",
         :zircon_inherited_age_Ma   => "Inherited zircon age (Ma)",
         :zircon_synthetic_grains   => "Synthetic grains per eruption",
@@ -340,6 +344,8 @@ function mageres_validate_options(o::MAGEResOptions)
     (0.0 <= o.phi_perc < o.phi_lock < o.phi_erupt <= 1.0) ||
         throw(ArgumentError("melt thresholds must satisfy 0 ≤ phi_perc < phi_lock < phi_erupt ≤ 1"))
     0.0 < o.erupt_frac <= 1.0 || throw(ArgumentError("erupt_frac must be in (0, 1]"))
+    o.phi_perc < o.phi_disaggregation <= 1.0 ||
+        throw(ArgumentError("phi_disaggregation must satisfy phi_perc < phi_disaggregation ≤ 1"))
     o.injection_target in MAGERES_INJECTION_TARGETS ||
         throw(ArgumentError("injection_target must be one of $(MAGERES_INJECTION_TARGETS)"))
     0.0 <= o.erupt_crystal_frac <= 1.0 || throw(ArgumentError("erupt_crystal_frac must be in [0, 1]"))
@@ -398,6 +404,7 @@ function mageres_validate_options(o::MAGEResOptions)
     end
     o.zircon_age_bin_yr > 0 || throw(ArgumentError("zircon_age_bin_yr must be > 0"))
     o.zircon_nucleation_density > 0 || throw(ArgumentError("zircon_nucleation_density must be > 0"))
+    o.zircon_nucleation_supersat >= 1 || throw(ArgumentError("zircon_nucleation_supersat must be ≥ 1"))
     o.zircon_host_radius_um > 0 || throw(ArgumentError("zircon_host_radius_um must be > 0"))
     o.zircon_inherited_age_Ma >= 0 || throw(ArgumentError("zircon_inherited_age_Ma must be ≥ 0"))
     o.zircon_synthetic_grains >= 1 || throw(ArgumentError("zircon_synthetic_grains must be ≥ 1"))

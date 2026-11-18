@@ -102,7 +102,7 @@ function mageres_erupt!(st::MAGEResState)
     st.chamber.n_extractions += 1
     push!(st.pluton.layers, MAGEResLayer(st.t, V_full, out[MAGERES_IE] / out[MAGERES_IC] - MAGERES_T0_K,
                                          MAGERES_SYMMETRY .* out[mageres_ox_rows(st)],
-                                         MAGERES_SYMMETRY .* out[mageres_tracer_rows(st)]))
+                                         MAGERES_SYMMETRY .* mageres_layer_tracers(st, out)))
     mageres_record!(st, :eruption, V_full)
     return V_full
 end

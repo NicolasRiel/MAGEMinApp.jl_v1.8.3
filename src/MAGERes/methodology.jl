@@ -26,7 +26,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   computed (no-flux symmetry boundary on the axis) and mirrored for display. Reported areas and volumes refer to the
   full section.
 - The mesh is a quadtree: base cells of the coarsest size are refined down to the finest size towards the chamber
-  boundary and towards the internal material boundaries (host, mush, mobile body, cumulate, partially molten host); a
+  boundary and towards the internal material boundaries (host, mush, mobile body, cumulate, partially molten host,
+  crystallised intrusion); a
   cell is refined while its size exceeds finest size + grading × distance to the nearest boundary, with at most one
   level of difference between neighbours. The mesh is rebuilt at every event (injection, eruption, chamber growth by
   percolation) and whenever a material boundary moves into a cell coarser than the finest size.
@@ -111,8 +112,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
 
 - The mobile body is the largest connected region of chamber cells (at least half inside the chamber outline) whose melt
   fraction, melt / (melt + solids) by volume, exceeds the lock-up melt fraction φ_lock (Marsh, 1981; Lejeune & Richet,
-  1995). Partially molten host rock is never part of it: its melt joins the chamber by percolation. Smaller isolated melt-rich
-  pockets (for example a fresh sill emplaced below the cumulate pile) are not part of it: they do not convect, mix or
+  1995). Partially molten host rock is never part of it: it reaches the body by percolation and disaggregation
+  (Section 7). Smaller isolated melt-rich pockets (for example a fresh sill emplaced below the cumulate pile) are not part of it: they do not convect, mix or
   settle, and crystallise in place or drain by percolation.
 - Convection is represented by an effective conductivity k · Nu inside the body, with Nu = (Ra / Ra_crit)^β for
   Ra > Ra_crit and Nu = 1 otherwise, and Ra = ρ g α ΔT L³ / (κ η) (Turcotte & Schubert, 2014).
@@ -141,6 +142,12 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   per timestep, L being the thickness of the connected partially molten column it belongs to.
 - Melt extracted from mush inside the chamber is added to the mobile body without changing the chamber size. Melt
   extracted from the host rock outside the chamber enlarges the chamber by its volume.
+- Assimilation of the wall rock depends on its partial melting. Melt drained from a host cell carries the share
+  e(φ) · Δφ of the cell's zircon (inherited grains and their overgrowths), Δφ being the drained melt fraction and
+  e(φ) = (φ − φ_perc) / (φ_disagg − φ_perc), from 0 at the percolation threshold to 1 at the disaggregation melt
+  fraction φ_disagg; the other crystals stay in the restite. A host cell connected to the body that reaches φ_disagg
+  has lost its framework and is assimilated whole (melt, crystals, zircon): its content is exchanged with the same
+  material volume of mobile-body magma, so mass, enthalpy and volume are conserved and the chamber shape is unchanged.
 
 ### 8. Crystal settling and cumulates
 
@@ -194,7 +201,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   MAGEMin point, `TE_prediction` gives the solid/melt concentration ratio of every element, and the melt and crystals
   that move apart (settling, compaction, percolation, eruption) take their own concentrations. Fluids carry none.
 - With a Zr saturation model (Watson & Harrison, 1983; Boehnke et al., 2013; Crisp & Berry, 2022), zircon nucleates in
-  supersaturated melt, then grows or dissolves at the rate set by Zr diffusion through the melt boundary layer around
+  melt supersaturated beyond the nucleation supersaturation C/C_sat (default 1.1), also where older grains are present
+  (new grains join the family of the current epoch up to the nucleation density), then grows or dissolves at the rate set by Zr diffusion through the melt boundary layer around
   the grains (Zhang & Xu, 2016, Eqs. 9 and 14–18; Kerr, 1995). The melt Zr relaxes exponentially toward saturation
   over each step, so Zr is conserved exactly. The saturation follows the cell temperature between minimisations.
 - Zircon mass is stored by crystallisation-age bin in separate families: inherited host-rock zircon and the grains
@@ -227,6 +235,10 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   included) are tracked through all fluxes and events, together with the area budgets (host rock + outflow = initial
   host; injected + percolated = chamber + erupted). All balances close to round-off; they are shown in the Diagnostics
   tab.
+- Every cell also carries its mass of host-rock origin, which follows all transfers like the oxides. The Volume &
+  assimilation tab shows, at every stored output, the host-origin mass fraction of the mobile body, the mean Zr
+  supersaturation of the body melt, and the fill ratio (material volume m / ρ over cell area) of the body, of the mush
+  and cumulate and of the whole chamber.
 
 ### Limitations
 

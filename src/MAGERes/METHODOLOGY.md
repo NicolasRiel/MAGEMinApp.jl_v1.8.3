@@ -130,7 +130,7 @@ with the grading factor $G$ (`grid_grading`). Cells touching the chamber are the
 size grows linearly away from it.
 
 **Refinement around internal boundaries.** Cells that touch a change of material class are also refined down to
-$h_{min}$. The classes are host, mush, mobile body, cumulate, and partially molten host (see
+$h_{min}$. The classes are host, mush, mobile body, cumulate, partially molten host and crystallised intrusion (see
 [Section 22](#22-outputs-and-display)). The refinement extends over the same graded distance
 $r = (h - h_{min})/G + h/\sqrt2$.
 
@@ -159,7 +159,9 @@ $$
   $T = E/C - 273.15$;
 - $H$ is the true enthalpy, which MAGEMin relates to temperature and composition;
 - $n_k$ are the oxide moles (default system: SiO₂, Al₂O₃, CaO, MgO, FeO, K₂O, Na₂O, TiO₂, O, Cr₂O₃, H₂O);
-- with trace elements on, the element masses and the zircon rows follow the oxides (Section 19).
+- with MAGEMin thermodynamics, the mass of host-rock origin $m_{host}$ follows the oxides: the host rock carries all its
+  mass, injected magma none, and every parcel takes its mass share of it (Section 21);
+- with trace elements on, the element masses and the zircon rows follow (Section 19).
 
 Because every entry is extensive, mixing two parcels is a plain sum, and the remap can redistribute every entry by
 area overlap.
@@ -549,7 +551,8 @@ connected to each other through cell faces. Three rules complete the definition:
   they crystallise in place or drain by percolation.
 - **Enclosed holes are included.** Chamber cells completely surrounded by the body belong to it, as crystal-rich
   parcels carried by convection.
-- **Host rock is never part of it**, however much it melts. Its melt reaches the chamber only by percolation.
+- **Host rock is never part of it**, however much it melts. It reaches the chamber by percolation and, once
+  disaggregated, by exchange with body magma (Section 17).
 
 The melt fraction used everywhere is the melt volume over melt plus solids:
 $\phi = V_{melt}/(V_{melt} + V_{solid})$.
@@ -719,6 +722,21 @@ composition and enthalpy $h_M$.
 - From the host rock ($f < 0.5$), it is pooled. The chamber is opened by its full-section volume
   $S \sum V$ (sill insertion of that melt, Section 8), and the volume is recorded as *percolated area*.
 
+**(c) Assimilation of the wall rock by partial melting.** How much wall rock reaches the magma depends on how much it
+melts. $\phi$ is the melt fraction of the host cell itself.
+- $\phi \le \phi_{perc}$: nothing leaves.
+- $\phi_{perc} < \phi < \phi_{disagg}$: the drained melt (b) also carries the share $e(\phi)\,\Delta\phi$ of the
+  cell's zircon (grain numbers and masses of every family, inherited grains included), with
+  $e(\phi) = (\phi - \phi_{perc}) / (\phi_{disagg} - \phi_{perc})$: little melt leaves the grains locked in the restite,
+  more melt frees them. The other crystals stay. Zr dissolved in the host melt leaves with it as an element.
+- $\phi \ge \phi_{disagg}$ (`phi_disaggregation`, default 0.4 = $\phi_{lock}$): the wall rock has lost its framework
+  and is assimilated whole. Its content (melt, every crystal phase, zircon, trace elements) is exchanged with the same
+  material volume ($m/\rho$) of mobile-body magma, taken from every body cell in proportion to its material volume
+  (at most half of the body), and spread over the body cells the same way. Mass, enthalpy and volume are conserved and
+  the chamber shape is unchanged; the body magma now in the wall cell cools there or drains back by (b). Only cells that
+  still hold mostly host-origin mass ($m_{host} \ge 0.5\,m$) are assimilated, so a cell already replaced by body magma
+  is not exchanged again.
+
 ---
 
 ## 18. Eruption
@@ -856,6 +874,7 @@ $$
 - degassing (fluid parcels carry no trace elements).
 
 Zircon follows the crystals: a solid parcel of mass $m_p$ takes the fraction $m_p/(m\,w_S)$ of every zircon row.
+Host-rock zircon leaves the wall rock with the drained melt and by disaggregation (Section 17).
 Melt parcels carry no zircon. The exception is a cell that has (almost) no crystals ($w_S \le 10^{-3}$): there the
 zircon follows the melt.
 
@@ -919,9 +938,11 @@ $$
   cores. A family's grains vanish ($N_z^f = 0$) when its zircon is gone.
 - Cells without melt exchange nothing: their zircon is armoured.
 
-**Nucleation.** When the melt is supersaturated ($C > C_{sat}$) and the cell has no zircon,
-$n_{nuc}\,V_M$ grains of radius 1 µm nucleate in the family of the current epoch, $n_{nuc}$ being
-`zircon_nucleation_density`. Their mass is taken from the melt.
+**Nucleation.** When the melt exceeds the nucleation supersaturation, $C > S_{nuc}\,C_{sat}$ ($S_{nuc}$ =
+`zircon_nucleation_supersat`, default 1.1), grains of radius 1 µm nucleate once per step in the family of the current
+epoch, up to $n_{nuc}\,V_M$ grains in that family, $n_{nuc}$ being `zircon_nucleation_density`. This also happens where
+older grains are present: few large grains (inherited cores, for example) take up Zr too slowly to keep the melt at
+saturation, and the melt would otherwise stay supersaturated for thousands of years. Their mass is taken from the melt.
 
 **Eruption sampling and synthetic analyses.** The erupted parcels carry their zircon rows, and these are stored
 with the eruption layer. The eruptions of one output (since the previous output) are merged into one sample. All ages
@@ -1068,7 +1089,17 @@ Reported diagnostics:
 | budget error | (injected + percolated − chamber − erupted) / (injected + percolated) |
 
 All of them stay at round-off level, around $10^{-13}$ for mass and trace elements and $10^{-15}$ for enthalpy, in
-the test runs. The trace-element error checks every transfer between melt, crystals, zircon, fluid and the outside;
+the test runs.
+
+**Volume consistency and assimilation** (Diagnostics → Volume & assimilation, computed at every stored output):
+- the fill ratio $\sum m/\rho \,/\, \sum A$ of the mobile body, of the mush and cumulate (chamber cells entirely inside
+  the outline, outside the body) and of the whole chamber (cells weighted by $f$). Mass is conserved exactly, but the
+  material volume of a cell can differ from its area (crystallisation shrinkage, drainage); 1 means consistent;
+- the host-origin mass fraction of the mobile body, $\sum_B m_{host} / \sum_B m$, from the $m_{host}$ row (Section 5);
+  every erupted layer records its host-origin mass too;
+- the area-weighted mean Zr supersaturation $C/C_{sat}$ of the body melt.
+
+The trace-element error checks every transfer between melt, crystals, zircon, fluid and the outside;
 the zircon exchange moves Zr between the element row and the zircon rows without changing their sum.
 
 ---
@@ -1101,13 +1132,14 @@ proportions (mol%, wt% or vol%).
 | Class | Meaning |
 |---|---|
 | 0 | host rock |
-| 1 | magma or mush in the chamber, not mobile ($\phi \le \phi_{lock}$) |
+| 1 | magma or mush in the chamber that still holds melt, not mobile |
 | 2 | mobile body |
 | 3 | cumulate mush ($\phi > \phi_{perc} + 0.02$) |
 | 4 | compacted cumulate |
 | 5 | partially molten host rock, $\phi \le \phi_{perc}$ |
 | 6 | partially molten host rock above $\phi_{perc}$ or giving melt to the chamber |
 | 7 | restite: host rock that has given melt to the chamber and is not feeding it now |
+| 8 | crystallised intrusion: chamber material without melt, outside the cumulate pile |
 
 The restite label uses a restite fraction carried by each cell. It is set to 1 when a host cell gives melt to the
 chamber, and is remapped with the material like the cumulate fraction (Section 16). A host cell is shown as restite
@@ -1121,6 +1153,7 @@ time span, total area, mean temperature and summed composition on hover.
 - vital signs (temperatures, melt fraction);
 - convection (Nu, Ra, body, percolated, settled and cumulate areas);
 - energy budget and conservation diagnostics;
+- volume consistency and assimilation (fill ratios, host-origin fraction of the body, Zr supersaturation; Section 21);
 - the cumulate log: one bar per piling event (cumulate grouped by lock-up time), stacked from the oldest at the
   base without gaps, split into the vol% of each solid phase.
 
@@ -1228,6 +1261,7 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 | `phi_lock` |  0.4  | lock-up melt fraction |
 | `phi_perc` | 0.07 | melt connectivity threshold |
 | `phi_erupt` |  0.6  | eruptible mean melt fraction of the body |
+| `phi_disaggregation` | 0.4 | host melt fraction above which the wall rock is assimilated whole (Section 17) |
 | `erupt_frac` |  0.2  | erupted fraction of the body volume per event |
 | `erupt_crystal_frac` |  1  | erupted crystal fraction χ (0 melt only, 1 bulk) |
 | `fluid_treatment` | removed | free fluid removed or retained |
@@ -1270,6 +1304,7 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 | `te_elements`, `te_injection_ppm`, `te_host_ppm` | tonalite / basalt | element list and injected and host compositions (µg/g) |
 | `zircon_age_bin_yr` | 1000 | width of the zircon age bins |
 | `zircon_nucleation_density` | 1e8 | grains nucleated per m³ of melt |
+| `zircon_nucleation_supersat` | 1.1 | supersaturation C/C_sat above which zircon nucleates |
 | `zircon_host_radius_um` | 50 | radius of the inherited host-rock zircon |
 | `zircon_inherited_age_Ma` | 300 | age shown for inherited zircon |
 | `zircon_synthetic_grains` | 100 | synthetic single spots and zoned grains drawn per eruption |
@@ -1292,6 +1327,7 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 | cell equilibration | ≤ 3 iterations, 1 K | Section 12 |
 | body mixing | ≤ 8 iterations, 0.05 K, steps ≤ 200 K | Section 12 |
 | routing swap cap | 0.5 of the body area | Section 12 |
+| disaggregation: minimum host-origin mass fraction | 0.5 | Section 17 |
 | mobile body: chamber fraction | ≥ 0.5 | Section 13 |
 | cumulate label threshold | 0.5 | Section 16 |
 | unlock margin | 0.05 above φ_lock | Section 16 |
@@ -1323,8 +1359,10 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
   at the Darcy rate; the compaction length and matrix viscosity are not modelled.
 - **Grid resolution.** A sill thinner than $h_{min}$ shares its cells with older material, which speeds up its early
   cooling.
-- **Assimilation.** Host rock enters the chamber only as percolated melt; bulk assimilation of wall rock is not
-  modelled.
+- **Assimilation.** Wall rock is assimilated through its partial melting: drained melt with the zircon it frees, and
+  whole disaggregated rock above `phi_disaggregation` (Section 17). Mechanical stoping of unmelted rock is not
+  modelled. Cells cut by the chamber outline hold magma and host rock in one content vector, so the remap also moves
+  some host rock into the chamber as the outline moves; the host-origin row measures everything that reaches it.
 - **Trace elements.** Partitioning is at equilibrium with the KD model at each MAGEMin point; when fluid is present
   its share of the mass is lumped with the crystals in the `TE_prediction` ratio. Zircon does not feed back on the
   major elements (its SiO₂ is ignored, about 0.03 wt% of the magma for 200 ppm Zr).

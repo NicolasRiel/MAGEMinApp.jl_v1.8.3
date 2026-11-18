@@ -102,13 +102,29 @@ mageres_has_volume_row(o::MAGEResOptions) = o.eruption_trigger == "overpressure"
 mageres_volume_row(st::MAGEResState) = size(st.Q, 1)
 
 """
+    mageres_has_host_row(st::MAGEResState)
+
+    True when `st.Q` holds the host-origin mass row (MAGEMin thermodynamics).
+"""
+mageres_has_host_row(st::MAGEResState) = st.thermo !== nothing
+
+"""
+    mageres_host_row(st::MAGEResState)
+
+    Row of `st.Q` holding the mass [kg/m] of host-rock origin of every cell, right after the oxides.
+"""
+mageres_host_row(st::MAGEResState) = MAGERES_IN0 + length(st.opts.oxides)
+
+"""
     mageres_tracer_rows(st::MAGEResState)
 
-    Rows of `st.Q` after the oxides: trace-element masses, then one block per zircon family (grain number,
-    inherited zircon mass, zircon mass per age bin), before the material-volume row. Empty without trace elements.
+    Rows of `st.Q` after the oxides and the host-origin row: trace-element masses, then one block per zircon family
+    (grain number, inherited zircon mass, zircon mass per age bin), before the material-volume row. Empty without
+    trace elements.
 """
 mageres_tracer_rows(st::MAGEResState) =
-    (MAGERES_IN0 + length(st.opts.oxides)):(size(st.Q, 1) - (mageres_has_volume_row(st.opts) ? 1 : 0))
+    (MAGERES_IN0 + length(st.opts.oxides) + (mageres_has_host_row(st) ? 1 : 0)):(size(st.Q, 1) -
+                                                                              (mageres_has_volume_row(st.opts) ? 1 : 0))
 
 """
     mageres_te_rows(st::MAGEResState)
@@ -116,10 +132,34 @@ mageres_tracer_rows(st::MAGEResState) =
     Rows of `st.Q` holding the mass of each trace element outside zircon [kg/m].
 """
 function mageres_te_rows(st::MAGEResState)
-    n0 = MAGERES_IN0 + length(st.opts.oxides)
+    n0 = first(mageres_tracer_rows(st))
     te = mageres_te(st)
     return te === nothing ? (n0:n0-1) : (n0:n0+length(te.elements)-1)
 end
+
+"""
+    mageres_n_tracers(te)
+
+    Number of tracer rows (trace elements and zircon blocks) of the trace-element setup `te`.
+"""
+mageres_n_tracers(te::Nothing) = 0
+mageres_n_tracers(te::MAGEResTE) = length(te.elements) + (te.zircon ? te.n_fam * (2 + te.n_bins) : 0)
+
+"""
+    mageres_layer_tracers(st::MAGEResState, v::AbstractVector{Float64})
+
+    Tracer entries of a layer from the conserved-quantity vector `v`: the tracer rows, then the host-origin mass.
+"""
+mageres_layer_tracers(st::MAGEResState, v::AbstractVector{Float64}) =
+    mageres_has_host_row(st) ? vcat(v[mageres_tracer_rows(st)], v[mageres_host_row(st)]) : v[mageres_tracer_rows(st)]
+
+"""
+    mageres_layer_host_mass(l::MAGEResLayer, te)
+
+    Mass of host-rock origin in layer `l`; NaN for layers recorded before the host-origin row existed.
+"""
+mageres_layer_host_mass(l::MAGEResLayer, te) =
+    length(l.tracers) == mageres_n_tracers(te) + 1 ? l.tracers[end] : NaN
 
 """
     mageres_zrc_N_index(te::MAGEResTE, f::Int)
@@ -228,15 +268,16 @@ end
 """
     mageres_host_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x, T::Float64)
 
-    Conserved-quantity density of a host-profile node with point `p`, bulk `x` and temperature `T` [°C], with the
-    host trace elements and inherited zircon when enabled, and the material volume (1 m³/m³) with the overpressure
-    trigger.
+    Conserved-quantity density of a host-profile node with point `p`, bulk `x` and temperature `T` [°C]: all its mass
+    of host origin, the host trace elements and inherited zircon when enabled, and the material volume (1 m³/m³) with
+    the overpressure trigger.
 """
 function mageres_host_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x::Vector{Float64},
                                    T::Float64)
     d = mageres_point_density(p, x, T, th.Mox)
     v = mageres_has_volume_row(o) ? [1.0] : Float64[]
-    th.te === nothing && return isempty(v) ? d : vcat(d, v)
+    d = vcat(d, mageres_density_mass(d, th.Mox))
+    th.te === nothing && return vcat(d, v)
     return vcat(d, mageres_tracer_density(th.te, p, mageres_density_mass(d, th.Mox), th.te.C_host;
                                           inherited = true,
                                           radius    = 1e-6 * o.zircon_host_radius_um), v)
@@ -246,14 +287,15 @@ end
     mageres_injection_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x, T::Float64,
                                    C::Vector{Float64})
 
-    Conserved-quantity density of the injected magma with point `p`, bulk `x`, temperature `T` [°C], trace elements
-    `C` [µg/g] when enabled, and the material volume (1 m³/m³) with the overpressure trigger.
+    Conserved-quantity density of the injected magma with point `p`, bulk `x`, temperature `T` [°C], no mass of host
+    origin, trace elements `C` [µg/g] when enabled, and the material volume (1 m³/m³) with the overpressure trigger.
 """
 function mageres_injection_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint,
                                         x::Vector{Float64}, T::Float64, C::Vector{Float64})
     d = mageres_point_density(p, x, T, th.Mox)
     v = mageres_has_volume_row(o) ? [1.0] : Float64[]
-    th.te === nothing && return isempty(v) ? d : vcat(d, v)
+    d = vcat(d, 0.0)
+    th.te === nothing && return vcat(d, v)
     return vcat(d, mageres_tracer_density(th.te, p, mageres_density_mass(d, th.Mox), C;
                                           inherited = false,
                                           radius    = 0.0), v)

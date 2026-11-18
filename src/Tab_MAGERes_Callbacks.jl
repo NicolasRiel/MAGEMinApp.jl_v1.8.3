@@ -39,6 +39,7 @@ const MAGERES_RUN_OUTPUTS = [
     ("mageres-tas-fig",                 "figure"),
     ("mageres-cumulate-fig",            "figure"),
     ("mageres-convection-fig",          "figure"),
+    ("mageres-fill-fig",                "figure"),
     ("mageres-progress-off",            "data"),
     ("run-poll-interval-mageres",       "interval"),
     ("mageres-timestep-select",         "options"),
@@ -390,6 +391,7 @@ function mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_
     d[("mageres-vital-signs-fig",   "figure")] = mageres_vital_signs_figure(S; injections = ([l.t for l in src],
                                                                                              [l.T for l in src]))
     d[("mageres-convection-fig",    "figure")] = mageres_convection_figure(S)
+    d[("mageres-fill-fig",          "figure")] = mageres_fill_figure(snap.outputs)
     d[("mageres-energy-budget-fig", "figure")] = mageres_energy_figure(S)
     d[("mageres-diagnostics-fig",   "figure")] = mageres_diagnostics_figure(S; te = mageres_te(st) !== nothing)
     t_prev = i > 1 ? snap.outputs[i-1].t : -Inf
@@ -780,6 +782,7 @@ const MAGERES_SVG_RESULT_PLOTS = [("mageres-eruption-fig",        "MAGERes_erupt
                                   ("mageres-diagnostics-fig",     "MAGERes_conservation"),
                                   ("mageres-vital-signs-fig",     "MAGERes_vital_signs"),
                                   ("mageres-convection-fig",      "MAGERes_convection"),
+                                  ("mageres-fill-fig",            "MAGERes_volume_assimilation"),
                                   ("mageres-energy-budget-fig",   "MAGERes_energy_budget")]
 
 """
