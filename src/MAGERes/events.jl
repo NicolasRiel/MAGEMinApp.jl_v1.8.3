@@ -147,7 +147,8 @@ end
 function mageres_inject!(st::MAGEResState)
     o   = st.opts
     T   = mageres_injection_T(o, st.t)
-    phi = st.thermo === nothing ? 1.0 : mageres_injection_equilibrium!(st.thermo, o, T)
+    phi = st.thermo === nothing ? 1.0 :
+          mageres_injection_equilibrium!(st.thermo, o, T; batch = st.chamber.n_injections + 1)
     V   = mageres_injection_volume(o, phi)
     led = mageres_apply_event!(st, V / st.chamber.I; mode = :inject)
     if st.thermo !== nothing

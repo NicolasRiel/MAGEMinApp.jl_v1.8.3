@@ -266,19 +266,19 @@ function mageres_tracer_density(te::MAGEResTE, p::MAGEResThermoPoint, rho::Float
 end
 
 """
-    mageres_host_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x, T::Float64)
+    mageres_host_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x, T::Float64, C)
 
     Conserved-quantity density of a host-profile node with point `p`, bulk `x` and temperature `T` [°C]: all its mass
-    of host origin, the host trace elements and inherited zircon when enabled, and the material volume (1 m³/m³) with
+    of host origin, the trace elements `C` [µg/g] (default: the host trace elements) and inherited zircon when enabled, and the material volume (1 m³/m³) with
     the overpressure trigger.
 """
 function mageres_host_node_density(th::MAGEResThermo, o::MAGEResOptions, p::MAGEResThermoPoint, x::Vector{Float64},
-                                   T::Float64)
+                                   T::Float64, C::Vector{Float64} = th.te === nothing ? Float64[] : th.te.C_host)
     d = mageres_point_density(p, x, T, th.Mox)
     v = mageres_has_volume_row(o) ? [1.0] : Float64[]
     d = vcat(d, mageres_density_mass(d, th.Mox))
     th.te === nothing && return vcat(d, v)
-    return vcat(d, mageres_tracer_density(th.te, p, mageres_density_mass(d, th.Mox), th.te.C_host;
+    return vcat(d, mageres_tracer_density(th.te, p, mageres_density_mass(d, th.Mox), C;
                                           inherited = true,
                                           radius    = 1e-6 * o.zircon_host_radius_um), v)
 end

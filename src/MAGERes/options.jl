@@ -50,6 +50,14 @@ Base.@kwdef mutable struct MAGEResOptions
     cp_host                   :: Float64         = 1000.0
     k_magma                   :: Float64         = 2.0
     k_host                    :: Float64         = 2.5
+    comp_var_host             :: Bool            = false
+    comp_var_injection        :: Bool            = false
+    comp_var_law              :: String          = "scaled"
+    comp_var_ref_pct          :: Float64         = 4.0
+    comp_var_exponent         :: Float64         = 0.15
+    comp_var_max_pct          :: Float64         = 50.0
+    comp_var_host_corr_m      :: Float64         = 500.0
+    comp_var_seed             :: Int             = 1
 
     injection_period_yr       :: Float64         = 1000.0
     first_injection_yr        :: Float64         = 0.0
@@ -155,7 +163,15 @@ const MAGERES_OPTION_GROUPS = [
         :cp_magma               => "Magma cp (J/kg·K)",
         :cp_host                => "Host cp (J/kg·K)",
         :k_magma                => "Magma conductivity (W/m·K)",
-        :k_host                 => "Host conductivity (W/m·K)"],
+        :k_host                 => "Host conductivity (W/m·K)",
+        :comp_var_host          => "Host-rock composition (layered in depth)",
+        :comp_var_injection     => "Injected-magma composition (every batch)",
+        :comp_var_law           => "Variability law",
+        :comp_var_ref_pct       => "1σ at 1 wt% (%; every component with the constant law)",
+        :comp_var_exponent      => "Concentration exponent b (1σ ~ C^-b)",
+        :comp_var_max_pct       => "Upper bound of 1σ (%)",
+        :comp_var_host_corr_m   => "Host vertical correlation length (m)",
+        :comp_var_seed          => "Composition random seed"],
     "Injection" => [
         :injection_period_yr => "Injection period (yr)",
         :first_injection_yr  => "First injection (yr)",
@@ -366,6 +382,14 @@ function mageres_validate_options(o::MAGEResOptions)
     o.T_inj_sine_period_yr > 0 || throw(ArgumentError("the sinusoid period must be > 0"))
     o.T_inj_noise_C >= 0 || throw(ArgumentError("the perturbation amplitude must be ≥ 0"))
     o.T_inj_noise_corr_yr > 0 || throw(ArgumentError("the perturbation correlation time must be > 0"))
+    o.comp_var_law in MAGERES_COMP_VAR_LAWS ||
+        throw(ArgumentError("comp_var_law must be one of $(MAGERES_COMP_VAR_LAWS)"))
+    o.comp_var_ref_pct >= 0 || throw(ArgumentError("the composition 1σ must be ≥ 0"))
+    o.comp_var_exponent >= 0 || throw(ArgumentError("the concentration exponent must be ≥ 0"))
+    o.comp_var_max_pct > 0 || throw(ArgumentError("the upper bound of the composition 1σ must be > 0"))
+    o.comp_var_host_corr_m > 0 || throw(ArgumentError("the host correlation length must be > 0"))
+    0 <= o.comp_var_seed <= typemax(UInt32) ||
+        throw(ArgumentError("the composition random seed must be between 0 and $(typemax(UInt32))"))
     o.T_inj_min_C < o.T_inj_max_C || throw(ArgumentError("the injection T lower bound must be below the upper bound"))
     n = length(o.oxides)
     length(o.magma_bulk) == n && length(o.host_bulk) == n ||

@@ -130,7 +130,7 @@ with the grading factor $G$ (`grid_grading`). Cells touching the chamber are the
 size grows linearly away from it.
 
 **Refinement around internal boundaries.** Cells that touch a change of material class are also refined down to
-$h_{min}$. The classes are host, mush, mobile body, cumulate, partially molten host and crystallised intrusion (see
+$h_{min}$. The classes are host, mush, mobile body, cumulate, and partially molten host (see
 [Section 22](#22-outputs-and-display)). The refinement extends over the same graded distance
 $r = (h - h_{min})/G + h/\sqrt2$.
 
@@ -206,6 +206,41 @@ $$
   bulk, and its trace elements are those of the melt (Section 12). The run stops with an error if the bulk has no
   melt at those conditions.
 - The chamber is closed at $t = 0$. The first injection (at `first_injection_yr`) opens it.
+
+**Compositional variability** (*composition_variability.jl*). Optionally, the host rock (`comp_var_host`) and every
+injected batch (`comp_var_injection`) take a random composition around their defined one. Every component $i$
+(major oxides and trace elements) varies by a relative standard deviation that depends on its mass fraction $w_i$:
+
+$$
+\sigma_i = \min\!\Big(p_{ref}\,\big(w_i / 0.01\big)^{-b},\; p_{max}\Big),
+$$
+
+with $p_{ref}$ = `comp_var_ref_pct` (1σ at 1 wt%), $b$ = `comp_var_exponent` and $p_{max}$ = `comp_var_max_pct`.
+The defaults ($p_{ref}$ = 4 %, $b$ = 0.15) follow the Horwitz curve (relative standard deviation
+$2\,w^{-0.15}$ %, Horwitz, 1982): SiO2 at 66 wt% varies by about 2 %, TiO2 at 0.7 wt% by 4 %, Zr at 150 µg/g by
+7.5 %, La at 29 µg/g by 10 % and Lu at 0.13 µg/g by 22 %. With `comp_var_law = constant`, $\sigma_i = p_{ref}$ for
+every component. Oxide mass fractions are computed from the molar bulk; trace elements use $w = C\,10^{-6}$.
+
+Each component is multiplied by a lognormal factor of mean 1 and relative standard deviation $\sigma_i$,
+
+$$
+f_i = \exp\!\big(s_i\,\xi_i - s_i^2/2\big), \qquad s_i^2 = \ln(1 + \sigma_i^2), \qquad \xi_i \sim \mathcal N(0, 1),
+$$
+
+which keeps every value positive and zero components at zero. The major oxides are then rescaled to their original
+total (closure); trace elements are not. Components are drawn independently, volatiles (H2O, CO2, S) included.
+
+- **Injected magma:** batch $k$ draws its own $\xi_i$ from a generator seeded with (`comp_var_seed`, $k$). A batch's
+  composition therefore depends only on the seed and its number, not on the run length or a resumption. Its
+  drawn bulk and trace elements replace the injection composition in the equilibrium of that batch (Section 12).
+- **Host rock:** the variation is layered in depth. Along the host-profile depths, each $\xi_i$ follows an
+  Ornstein–Uhlenbeck sequence of correlation length $L$ = `comp_var_host_corr_m`,
+  $\xi_{j+1} = r\,\xi_j + \sqrt{1 - r^2}\,\varepsilon_{j+1}$ with $r = e^{-\Delta y/L}$, and every profile depth
+  is equilibrated with its own composition. The profile spacing is reduced to at most $L/4$ when needed, so that the
+  linear interpolation of $\mathbf q(y)$ between depths follows the variation. Inherited zircon follows the Zr of
+  each depth.
+
+The Model properties tab previews $\sigma_i$ against concentration for the injected and host compositions.
 
 ---
 
@@ -487,7 +522,8 @@ all use the same temperatures. The temperature of every injection is stored with
 *Vital signs*.
 
 At each injection the injected magma is re-equilibrated with MAGEMin at $T_{inj}(t)$ and the lens pressure (once per
-distinct temperature, to 0.1 °C; memoised). With *Equilibrated melt*, the bulk is equilibrated at $T_{inj}(t)$, its
+distinct temperature, to 0.1 °C; memoised), or, with injection variability, at its drawn composition for every
+batch (Section 6). With *Equilibrated melt*, the bulk is equilibrated at $T_{inj}(t)$, its
 melt is re-equilibrated and injected (the lens thickness scaled by the bulk melt fraction at $T_{inj}$, Section 7),
 and its trace elements are those of the melt, by mass balance between melt and solids at that equilibrium:
 
@@ -1007,7 +1043,11 @@ zoned grains are not drawn.
      inherited zircon. In the csv table, `antecryst_fraction` is the antecryst share of the non-inherited zircon and
      `inherited_fraction` the inherited share of all zircon.
 
-   The injection temperature is drawn on the right axis of the top panel, and each panel has its legend below it.
+   The injection temperature is drawn on the right axis of the top panel. The second panel repeats the top one with
+   the number of host-rock cells feeding the chamber on the right axis (the cells of the "host feeding the chamber"
+   class of the material map: host cells with melt fraction above $\phi_{perc}$ or that gave melt to the chamber in
+   the last step), counted at every stored output, so the residence times can be compared with the supply of
+   host-rock melt and zircon. Each panel has its legend below it.
 
    From the synthetic spots: the weighted mean ± 2σ and the MSWD.
 3. **Eruption-age estimators.** The eruption age is estimated from the synthetic spots of each sample and compared with
@@ -1132,14 +1172,13 @@ proportions (mol%, wt% or vol%).
 | Class | Meaning |
 |---|---|
 | 0 | host rock |
-| 1 | magma or mush in the chamber that still holds melt, not mobile |
+| 1 | magma or mush in the chamber, not mobile ($\phi \le \phi_{lock}$) |
 | 2 | mobile body |
 | 3 | cumulate mush ($\phi > \phi_{perc} + 0.02$) |
 | 4 | compacted cumulate |
 | 5 | partially molten host rock, $\phi \le \phi_{perc}$ |
 | 6 | partially molten host rock above $\phi_{perc}$ or giving melt to the chamber |
 | 7 | restite: host rock that has given melt to the chamber and is not feeding it now |
-| 8 | crystallised intrusion: chamber material without melt, outside the cumulate pile |
 
 The restite label uses a restite fraction carried by each cell. It is set to 1 when a host cell gives melt to the
 chamber, and is remapped with the material like the cumulate fraction (Section 16). A host cell is shown as restite
@@ -1235,6 +1274,13 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 | `geotherm_gradient_C_km` |  20  | geothermal gradient |
 | `k_magma`, `k_host` | 2.0, 2.5 | conductivities |
 | `rho_*`, `cp_*` | 2600/2800, 1200/1000 | constant-mode properties only |
+| `comp_var_host`, `comp_var_injection` | off, off | random host (layered) and injected (per batch) compositions |
+| `comp_var_law` | scaled | scaled ($\sigma \propto w^{-b}$) or constant |
+| `comp_var_ref_pct` | 4 | 1σ at 1 wt% (%), or 1σ of every component with the constant law |
+| `comp_var_exponent` | 0.15 | concentration exponent $b$ |
+| `comp_var_max_pct` | 50 | upper bound of 1σ (%) |
+| `comp_var_host_corr_m` | 500 | vertical correlation length of the host variation |
+| `comp_var_seed` | 1 | random seed of the compositions |
 
 **Injection**
 
@@ -1409,6 +1455,8 @@ in `saved_states/mageres/` (`mageres_save_options` / `mageres_load_options`).
 - Holland, T. J. B., Green, E. C. R., & Powell, R. (2018). Melting of peridotites through to granites: a simple
   thermodynamic model in the system KNCFMASHTOCr. *Journal of Petrology*, 59, 881–900.
   [doi:10.1093/petrology/egy048](https://doi.org/10.1093/petrology/egy048)
+- Horwitz, W. (1982). Evaluation of analytical methods used for regulation of foods and drugs. *Analytical
+  Chemistry*, 54, 67A–76A.
 - Jellinek, A. M., & DePaolo, D. J. (2003). A model for the origin of large silicic magma chambers: precursors of
   caldera-forming eruptions. *Bulletin of Volcanology*, 65, 363–381.
   [doi:10.1007/s00445-003-0277-y](https://doi.org/10.1007/s00445-003-0277-y)

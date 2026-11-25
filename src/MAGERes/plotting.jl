@@ -61,7 +61,7 @@ function mageres_probe_traces(st::MAGEResState, probe, unit::Int)
     p        = th.points[c]
     T        = st.Q[MAGERES_IE, c] / st.Q[MAGERES_IC, c] - MAGERES_T0_K
     material = ("host", "magma/mush", "mobile body", "cumulate mush", "compacted cumulate", "partially molten host",
-                "host feeding the chamber", "restite (melt extracted)", "crystallised intrusion")
+                "host feeding the chamber", "restite (melt extracted)")
     cls      = Int(mageres_material_class(st)[c])
     xh       = 1e3 * Float64(probe[1]) > mageres_axis_x(st.opts) ? 2 * mageres_axis_x(st.opts) - st.grid.xc[c] :
                st.grid.xc[c]
@@ -249,19 +249,16 @@ const MAGERES_MELT_COLORS = [[0.0, "rgb(255,255,255)"], [0.05, "rgb(237,242,250)
                              [0.5, "rgb(140,150,198)"], [0.75, "rgb(136,65,157)"], [1.0, "rgb(77,0,75)"]]
 
 const MAGERES_MATERIAL_CLASS_COLORS = ("rgb(200,200,200)", "rgb(214,96,77)", "rgb(253,174,97)", "rgb(145,191,219)",
-                                       "rgb(49,84,150)", "rgb(250,232,150)", "rgb(140,81,160)", "rgb(140,110,80)",
-                                       "rgb(120,118,135)")
+                                       "rgb(49,84,150)", "rgb(250,232,150)", "rgb(140,81,160)", "rgb(140,110,80)")
 const MAGERES_RESTITE_FRAC          = 0.5
-const MAGERES_SOLID_MELT            = 1e-6
 const MAGERES_MATERIAL_CLASS_NAMES  = ("Host rock",
-                                       "Magma or mush with melt, not mobile",
+                                       "Magma or mush (melt ≤ φ<sub>lock</sub>, not mobile)",
                                        "Mobile body (melt > φ<sub>lock</sub>)",
                                        "Cumulate mush (melt > φ<sub>perc</sub>)",
                                        "Compacted cumulate",
                                        "Partially molten host (melt ≤ φ<sub>perc</sub>)",
                                        "Host feeding the chamber (melt > φ<sub>perc</sub>)",
-                                       "Restite (melt extracted)",
-                                       "Crystallised intrusion (no melt)")
+                                       "Restite (melt extracted)")
 const MAGERES_LEGEND_ROW_PX         = 20
 const MAGERES_LEGEND_TOP_PX         = 48
 const MAGERES_CUMULATE_MUSH_EXCESS  = 0.02
@@ -273,9 +270,8 @@ const MAGERES_MATERIAL_COLORS = [[x, c] for (k, c) in enumerate(MAGERES_MATERIAL
 """
     mageres_material_class(st::MAGEResState; split_cumulate::Bool = true)
 
-    Material class of every cell: 0 host, 1 magma/mush holding melt, 2 mobile body, 3 cumulate mush, 4 compacted
-    cumulate, 5 partially molten host, 6 host feeding the chamber, 7 restite (host that has given melt to the chamber),
-    8 crystallised intrusion (chamber material without melt, outside the cumulate).
+    Material class of every cell: 0 host, 1 magma/mush, 2 mobile body, 3 cumulate mush, 4 compacted cumulate,
+    5 partially molten host, 6 host feeding the chamber, 7 restite (host that has given melt to the chamber).
     With `split_cumulate = false` all cumulate is class 4.
 """
 function mageres_material_class(st::MAGEResState; split_cumulate::Bool = true)
@@ -294,12 +290,6 @@ function mageres_material_class(st::MAGEResState; split_cumulate::Bool = true)
             elseif melt[c] > 0
                 v[c] = 5.0
             end
-        end
-    end
-    if st.thermo !== nothing
-        melt = mageres_melt_fraction(st)
-        for c in 1:n
-            v[c] == 1 && melt[c] <= MAGERES_SOLID_MELT && (v[c] = 8.0)
         end
     end
     length(st.body) == n && (v[st.body] .= 2.0)

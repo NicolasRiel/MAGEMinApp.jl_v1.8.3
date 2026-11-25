@@ -422,18 +422,17 @@ end
 """
     mageres_host_profile(th::MAGEResThermo, o::MAGEResOptions)
 
-    Equilibrate the host bulk along the geotherm over the domain thickness and return the MAGEResHostProfile.
+    Equilibrate the host bulk along the geotherm over the domain thickness and return the MAGEResHostProfile. With
+    `comp_var_host` every node holds its own drawn host composition (`mageres_host_compositions`).
 """
 function mageres_host_profile(th::MAGEResThermo, o::MAGEResOptions)
-    H       = 1e3 * o.domain_thickness_km
-    dT      = o.geotherm_gradient_C_km * o.domain_thickness_km
-    nn      = max(2, ceil(Int, dT / (0.5 * o.dT_tol)) + 1)
-    y       = collect(range(-H, 0.0; length = nn))
-    T       = [o.T_surface_C - o.geotherm_gradient_C_km / 1e3 * yy for yy in y]
-    P       = [mageres_lithostatic_kbar(o, yy) for yy in y]
-    x0      = mageres_normalized(o.host_bulk)
-    pts, xs = mageres_equilibrate!(th, o, [x0 for _ in 1:nn], P, T; stage = "Initial host-rock profile")
-    dens    = reduce(hcat, [mageres_host_node_density(th, o, pts[j], xs[j], T[j]) for j in 1:nn])
+    y        = mageres_host_profile_y(o)
+    nn       = length(y)
+    T        = [o.T_surface_C - o.geotherm_gradient_C_km / 1e3 * yy for yy in y]
+    P        = [mageres_lithostatic_kbar(o, yy) for yy in y]
+    x0s, C0s = mageres_host_compositions(o, y, th.te === nothing ? Float64[] : th.te.C_host)
+    pts, xs  = mageres_equilibrate!(th, o, x0s, P, T; stage = "Initial host-rock profile")
+    dens     = reduce(hcat, [mageres_host_node_density(th, o, pts[j], xs[j], T[j], C0s[j]) for j in 1:nn])
     return MAGEResHostProfile(y, dens, pts)
 end
 
@@ -484,11 +483,11 @@ function mageres_build_thermo(o::MAGEResOptions, mm; progressbar::Bool = true, c
                           MAGEResHostProfile(Float64[], zeros(0, 0), MAGEResThermoPoint[]), dummy, Float64[], Mox, mm,
                           0, Int[], 0, 0, 0, 0, 0, progressbar, callback_fn, stage_fn, boost, mageres_build_te(o))
     th.profile = mageres_host_profile(th, o)
-    mageres_injection_equilibrium!(th, o, mageres_injection_T(o, o.first_injection_yr))
+    mageres_injection_equilibrium!(th, o, mageres_injection_T(o, o.first_injection_yr); batch = 1)
     return th
 end
 
-const MAGERES_INJ_CACHE      = WeakKeyDict{MAGEResThermo,Dict{Float64,Tuple{MAGEResThermoPoint,Vector{Float64},Float64}}}()
+const MAGERES_INJ_CACHE      = WeakKeyDict{MAGEResThermo,Dict{Tuple{Float64,Int},Tuple{MAGEResThermoPoint,Vector{Float64},Float64}}}()
 const MAGERES_INJ_CACHE_LOCK = ReentrantLock()
 
 """
@@ -506,29 +505,30 @@ function mageres_injection_melt_te(p_bulk::MAGEResThermoPoint, te::MAGEResTE, C:
 end
 
 """
-    mageres_injection_equilibrium!(th::MAGEResThermo, o::MAGEResOptions, T::Real)
+    mageres_injection_equilibrium!(th::MAGEResThermo, o::MAGEResOptions, T::Real; batch::Integer = 1)
 
-    Set the injected magma of `th` (point and conserved-quantity density) for an injection at `T` [°C] and the
-    lithostatic pressure of the lens depth: the injected composition equilibrated at `T` with the injected trace
-    elements, or with `o.injection_melt_only` the melt of that equilibrium, re-equilibrated at `T`, with the melt
-    trace elements (`mageres_injection_melt_te`). Results are memoised per `th` and `T` (to 0.1 °C), so a time
-    signal costs one MAGEMin equilibrium per distinct temperature. Returns the melt fraction (melt / (melt + solids),
-    by volume) of the injected composition at `T`.
+    Set the injected magma of `th` (point and conserved-quantity density) for injection `batch` at `T` [°C] and the
+    lithostatic pressure of the lens depth: the injected composition of that batch (`mageres_injection_composition`)
+    equilibrated at `T` with its trace elements, or with `o.injection_melt_only` the melt of that equilibrium,
+    re-equilibrated at `T`, with the melt trace elements (`mageres_injection_melt_te`). Without composition
+    variability, results are memoised per `th` and `T` (to 0.1 °C), so a time signal costs one MAGEMin equilibrium per
+    distinct temperature; with it, only the last batch is kept. Returns the melt fraction (melt / (melt + solids), by
+    volume) of the injected composition at `T`.
 """
-function mageres_injection_equilibrium!(th::MAGEResThermo, o::MAGEResOptions, T::Real)
+function mageres_injection_equilibrium!(th::MAGEResThermo, o::MAGEResOptions, T::Real; batch::Integer = 1)
     Tk    = Float64(T)
-    key   = round(Tk; digits = 1)
-    cache = lock(() -> get!(MAGERES_INJ_CACHE, th, Dict{Float64,Tuple{MAGEResThermoPoint,Vector{Float64},Float64}}()),
+    key   = (round(Tk; digits = 1), o.comp_var_injection ? Int(batch) : 0)
+    cache = lock(() -> get!(MAGERES_INJ_CACHE, th,
+                            Dict{Tuple{Float64,Int},Tuple{MAGEResThermoPoint,Vector{Float64},Float64}}()),
                  MAGERES_INJ_CACHE_LOCK)
     if haskey(cache, key)
         th.injection, th.injection_density, phi = cache[key]
         return phi
     end
-    x_inj = mageres_normalized(isempty(o.injection_bulk) ? o.magma_bulk : o.injection_bulk)
+    x_inj, C_inj = mageres_injection_composition(o, batch, th.te === nothing ? Float64[] : th.te.C_injection)
     P     = mageres_lithostatic_kbar(o, -1e3 * o.lens_depth_km)
     pts, xs = mageres_equilibrate!(th, o, [x_inj], [P], [Tk]; stage = "Injected magma")
     phi   = mageres_melt_ratio(pts[1])
-    C_inj = th.te === nothing ? Float64[] : th.te.C_injection
     if o.injection_melt_only
         p_bulk = pts[1]
         (p_bulk.frac_M > 0 && sum(p_bulk.bulk_M) > 0) ||
@@ -538,6 +538,7 @@ function mageres_injection_equilibrium!(th::MAGEResThermo, o::MAGEResOptions, T:
     end
     th.injection         = pts[1]
     th.injection_density = mageres_injection_node_density(th, o, pts[1], xs[1], Tk, C_inj)
+    o.comp_var_injection && empty!(cache)
     cache[key]           = (th.injection, th.injection_density, phi)
     return phi
 end

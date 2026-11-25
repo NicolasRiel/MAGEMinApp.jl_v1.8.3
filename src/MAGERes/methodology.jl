@@ -26,8 +26,7 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
   computed (no-flux symmetry boundary on the axis) and mirrored for display. Reported areas and volumes refer to the
   full section.
 - The mesh is a quadtree: base cells of the coarsest size are refined down to the finest size towards the chamber
-  boundary and towards the internal material boundaries (host, mush, mobile body, cumulate, partially molten host,
-  crystallised intrusion); a
+  boundary and towards the internal material boundaries (host, mush, mobile body, cumulate, partially molten host); a
   cell is refined while its size exceeds finest size + grading × distance to the nearest boundary, with at most one
   level of difference between neighbours. The mesh is rebuilt at every event (injection, eruption, chamber growth by
   percolation) and whenever a material boundary moves into a cell coarser than the finest size.
@@ -63,6 +62,13 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
 - Pressure is lithostatic, P = ρ_host · g · depth.
 - The host rock is initialised from MAGEMin calculations along the geotherm, and the injected magma from a calculation at
   the injection temperature and the pressure of the chamber centre.
+- Optionally, the host rock and each injected batch take a random composition around the defined one. Every major oxide
+  and trace element is multiplied by a lognormal factor of mean 1 whose relative standard deviation decreases with
+  concentration, σ = 1σ at 1 wt% × (w / 1 wt%)^−b, capped (Horwitz-type law, Horwitz, 1982; defaults 4 % and b = 0.15:
+  about 2 % for SiO2, 10 % for La at 29 µg/g, 22 % for Lu at 0.13 µg/g), or constant for every component. Oxides are
+  renormalised to their total. Each batch draws independently from the seed and its number; the host varies in depth
+  only (layered), with a vertical correlation length, and every depth of the host profile is equilibrated with its own
+  composition.
 - A cell is re-equilibrated when its temperature has changed by more than the ΔT tolerance since its last calculation,
   or its specific enthalpy by more than 3 kJ/kg/K × ΔT tolerance (above the sub-solidus temperature, or while it still
   contains melt), or when its composition has changed by more than the ΔX tolerance. The enthalpy criterion keeps cells
@@ -223,7 +229,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
     the median and 5–95 % ages of the erupted zircon mass, and the line where zircon age equals eruption age;
   - per eruption, from the erupted zircon mass: 5–95 % ages and mean residence time before eruption, skewness and
     kurtosis (Caricchi et al., 2014), antecryst (older than the previous eruption) and inherited fractions; from the
-    spots: weighted mean and MSWD;
+    spots: weighted mean and MSWD; the residence panel is drawn twice, against the injection temperature and against
+    the number of host-rock cells feeding the chamber;
   - eruption-age estimators tested against the model eruption age: youngest grain, youngest cluster YC2σ(3+)
     (Dickinson & Gehrels, 2009), weighted mean, and a Bayesian estimate with a uniform crystallisation distribution
     (Keller et al., 2018), with their error and 2σ coverage against the number of dated grains;
@@ -282,6 +289,8 @@ philosophy of the Magma Chamber Simulator (Bohrson et al., 2014), here on a spat
 - Holland, T. J. B., Green, E. C. R., & Powell, R. (2018). Melting of peridotites through to granites: a simple
   thermodynamic model in the system KNCFMASHTOCr. *Journal of Petrology*, 59, 881–900.
   [doi:10.1093/petrology/egy048](https://doi.org/10.1093/petrology/egy048)
+- Horwitz, W. (1982). Evaluation of analytical methods used for regulation of foods and drugs. *Analytical
+  Chemistry*, 54, 67A–76A.
 - Jellinek, A. M., & DePaolo, D. J. (2003). A model for the origin of large silicic magma chambers: precursors of
   caldera-forming eruptions. *Bulletin of Volcanology*, 65, 363–381.
   [doi:10.1007/s00445-003-0277-y](https://doi.org/10.1007/s00445-003-0277-y)

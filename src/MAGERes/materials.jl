@@ -71,6 +71,16 @@ mageres_magma_material(o::MAGEResOptions) = MAGEResMaterial(o.oxides, o.magma_bu
 mageres_host_material(o::MAGEResOptions) = MAGEResMaterial(o.oxides, o.host_bulk, o.rho_host, o.cp_host, o.k_host)
 
 """
+    mageres_host_material(o::MAGEResOptions, y::Real)
+
+    Host-rock `MAGEResMaterial` at height `y` [m]: the host bulk of that height with `comp_var_host`
+    (`mageres_host_bulk_at`), the host bulk otherwise.
+"""
+mageres_host_material(o::MAGEResOptions, y::Real) =
+    o.comp_var_host ? MAGEResMaterial(o.oxides, mageres_host_bulk_at(o, y), o.rho_host, o.cp_host, o.k_host) :
+                      mageres_host_material(o)
+
+"""
     mageres_injection_material(o::MAGEResOptions)
 
     Injected-magma `MAGEResMaterial`: the injection bulk of `o` (or the magma bulk when empty) with magma properties.
@@ -78,6 +88,18 @@ mageres_host_material(o::MAGEResOptions) = MAGEResMaterial(o.oxides, o.host_bulk
 mageres_injection_material(o::MAGEResOptions) =
     MAGEResMaterial(o.oxides, isempty(o.injection_bulk) ? o.magma_bulk : o.injection_bulk,
                     o.rho_magma, o.cp_magma, o.k_magma)
+
+"""
+    mageres_injection_material(o::MAGEResOptions, batch::Integer)
+
+    Injected-magma `MAGEResMaterial` of injection `batch`: its drawn bulk with `comp_var_injection`
+    (`mageres_injection_composition`), the injection bulk otherwise.
+"""
+mageres_injection_material(o::MAGEResOptions, batch::Integer) =
+    o.comp_var_injection ?
+        MAGEResMaterial(o.oxides, first(mageres_injection_composition(o, batch, Float64[])), o.rho_magma, o.cp_magma,
+                        o.k_magma) :
+        mageres_injection_material(o)
 
 const MAGERES_IE  = 1
 const MAGERES_IC  = 2

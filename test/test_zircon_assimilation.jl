@@ -40,6 +40,9 @@ zr_total(st, c) = (te = MZ.mageres_te(st);
     @test all(MZ.mageres_layer_host_mass(l, MZ.mageres_te(st)) == 0.0 for l in st.source.layers)
     d = MZ.mageres_volume_diagnostics(st)
     @test 0 <= d.host_body < 1
+    tf, nf = MZ.mageres_feeding_series([MZ.MAGEResOutput(st.t, "end", st)])
+    @test tf == [st.t]
+    @test nf == [count(==(6.0), MZ.mageres_material_class(st))]
 end
 
 @testset "host zircon release law" begin

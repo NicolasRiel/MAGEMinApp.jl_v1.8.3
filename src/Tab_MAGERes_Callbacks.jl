@@ -126,8 +126,19 @@ function mageres_collect_options(vals)
         v === nothing && throw(ArgumentError("please fill in \"$(MAGERES_OPTION_LABELS[f])\""))
         d[string(f)] = v
     end
-    database, magma_table, host_table, inj_table, use_magma = vals[nf+1:nf+5]
-    te_magma_table, te_host_table, te_inj_table             = vals[nf+6:nf+8]
+    mageres_composition_entries!(d, vals[nf+1:nf+8]...)
+    return mageres_options_from_dict(d)
+end
+
+"""
+    mageres_composition_entries!(d, database, magma_table, host_table, inj_table, use_magma, te_magma_table,
+                                 te_host_table, te_inj_table)
+
+    Add the database, oxides, bulks and trace-element compositions read from the composition tables to the option
+    dictionary `d`.
+"""
+function mageres_composition_entries!(d::Dict{String,Any}, database, magma_table, host_table, inj_table, use_magma,
+                                      te_magma_table, te_host_table, te_inj_table)
     same_as_magma = use_magma !== nothing && 1 in use_magma
     oxides, bulks = mageres_align_tables([magma_table, host_table, inj_table])
     d["database"]       = database === nothing ? "ig" : String(database)
@@ -144,7 +155,7 @@ function mageres_collect_options(vals)
         d["te_host_ppm"]      = align(te_host_table)
         d["te_injection_ppm"] = same_as_magma ? C_m : align(te_inj_table)
     end
-    return mageres_options_from_dict(d)
+    return d
 end
 
 """
@@ -406,7 +417,8 @@ function mageres_results_figures(snap, sel; probe = nothing, pie_unit = 1, show_
     seq    = mageres_snapshot_sequence(snap, i; group = something(seq_group, "eruption"))
     T_inj  = ([l.t for l in st.source.layers], [l.T for l in st.source.layers])
     d[("mageres-zircon-seq-fig",        "figure")] = mageres_zircon_sequence_figure(seq; T_injection = T_inj)
-    d[("mageres-zircon-seq-stats-fig",  "figure")] = mageres_zircon_sequence_stats_figure(seq; T_injection = T_inj)
+    d[("mageres-zircon-seq-stats-fig",  "figure")] = mageres_zircon_sequence_stats_figure(seq; T_injection = T_inj,
+                                                                                         feeding     = mageres_feeding_series(snap.outputs[1:i]))
     d[("mageres-eruption-age-test-fig", "figure")] = mageres_eruption_age_test_figure(seq)
     ox = snap.oxides
     d[("mageres-melt-in-fig",      "figure")] = mageres_composition_figure(mageres_layer_times(st.source),
@@ -984,6 +996,53 @@ function Tab_MAGERes_Callbacks(app)
             return mageres_placeholder_figure(e isa ArgumentError ? e.msg : "Invalid value"; height = 380)
         end
         return mageres_injection_T_figure(o)
+    end
+
+    """
+        Show the composition-variability rows that apply to the selected switches and law.
+    """
+    callback!(
+        app,
+        [Output(mageres_row_id(f), "style") for f in MAGERES_COMP_VAR_FIELDS]...,
+
+        Input(mageres_input_id(:comp_var_host),      "value"),
+        Input(mageres_input_id(:comp_var_injection), "value"),
+        Input(mageres_input_id(:comp_var_law),       "value"),
+        prevent_initial_call = true,
+    ) do host, inj, law
+        return Tuple(mageres_comp_var_row_style(f, host === true, inj === true, law) for f in MAGERES_COMP_VAR_FIELDS)
+    end
+
+    """
+        Redraw the composition-variability preview when one of its options or a composition table changes; an
+        invalid entry shows the error.
+    """
+    callback!(
+        app,
+        Output("mageres-comp-var-preview-fig", "figure"),
+
+        [Input(mageres_input_id(f), "value") for f in MAGERES_COMP_VAR_INPUTS]...,
+        Input("database-dropdown-mageres",         "value"),
+        Input("table-bulk-rock-mageres-magma",     "data"),
+        Input("table-bulk-rock-mageres-host",      "data"),
+        Input("table-bulk-rock-mageres-injection", "data"),
+        Input("injection-use-magma-mageres",       "value"),
+        Input("table-te-mageres-magma",            "data"),
+        Input("table-te-mageres-host",             "data"),
+        Input("table-te-mageres-injection",        "data"),
+        prevent_initial_call = true,
+    ) do vals...
+        nf = length(MAGERES_COMP_VAR_INPUTS)
+        any(v -> v === nothing, vals[1:nf]) &&
+            return mageres_placeholder_figure("Fill in every composition variability option"; height = 380)
+        o = try
+            d = Dict{String,Any}(string(f) => v for (f, v) in zip(MAGERES_COMP_VAR_INPUTS, vals[1:nf]))
+            mageres_options_from_dict(mageres_composition_entries!(d, vals[nf+1:end]...))
+        catch e
+            e isa ArgumentError || e isa InexactError || rethrow()
+            return mageres_placeholder_figure(e isa ArgumentError ? e.msg : "Invalid value"; height = 380)
+        end
+        return mageres_comp_var_figure(o)
     end
 
     """

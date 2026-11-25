@@ -54,6 +54,10 @@ end
     include(joinpath(@__DIR__, "test_injection_signal.jl"))
 end
 
+@testset "MAGERes composition variability" begin
+    include(joinpath(@__DIR__, "test_composition_variability.jl"))
+end
+
 @testset "MAGERes zircon nucleation" begin
     include(joinpath(@__DIR__, "test_zircon_nucleation.jl"))
 end

@@ -16,6 +16,7 @@ const MAGERES_SEQ_MAX_VIOLINS   = 40
 const MAGERES_SEQ_COLOR         = "rgb(0,114,189)"
 const MAGERES_SEQ_SEL_COLOR     = "rgb(200,40,40)"
 const MAGERES_INJ_T_COLOR      = "rgb(217,95,2)"
+const MAGERES_FEEDING_COLOR    = "rgb(27,158,119)"
 const MAGERES_ESTIMATOR_COLORS  = ["rgb(0,114,189)", "rgb(230,140,30)", "rgb(60,160,60)", "rgb(126,47,142)"]
 
 """
@@ -115,6 +116,52 @@ function mageres_injection_T_trace(T_injection, t_ref::Float64, x_lo::Float64, x
                      xaxis = "x", yaxis = yaxis, line = attr(color = MAGERES_INJ_T_COLOR, width = 1), marker = attr(color = MAGERES_INJ_T_COLOR, size = 3),
                      hovertemplate = "%{y:.0f} °C<extra>injection T</extra>", kw...)
 end
+
+"""
+    mageres_feeding_cells(st::MAGEResState)
+
+    Number of host-rock cells feeding the chamber (material class 6 of `mageres_material_class`: host cells with melt
+    above `phi_perc` or that gave melt to the chamber during the last step).
+"""
+mageres_feeding_cells(st::MAGEResState) = count(==(6.0), mageres_material_class(st))
+
+"""
+    mageres_feeding_series(outputs)
+
+    Times [yr] and numbers of host-rock cells feeding the chamber (`mageres_feeding_cells`) of the stored outputs.
+"""
+mageres_feeding_series(outputs) = ([o.t for o in outputs], [mageres_feeding_cells(o.state) for o in outputs])
+
+"""
+    mageres_feeding_trace(feeding, t_ref, x_lo, x_hi; yaxis, legend = nothing)
+
+    Line of the number of host-rock cells feeding the chamber, `feeding = (t [yr], counts)`, against age before
+    `t_ref` [yr], kept within the age range [`x_lo`, `x_hi`] [kyr], on axis `yaxis`; `nothing` without data in that
+    range.
+"""
+function mageres_feeding_trace(feeding, t_ref::Float64, x_lo::Float64, x_hi::Float64; yaxis::AbstractString,
+                               legend = nothing)
+    feeding === nothing && return nothing
+    a = (t_ref .- feeding[1]) ./ 1e3
+    k = [i for i in eachindex(a) if x_lo <= a[i] <= x_hi]
+    k = k[sortperm(a[k])]
+    length(k) >= 2 || return nothing
+    kw = legend === nothing ? (;) : (; legend = legend)
+    return scatter(; x = a[k], y = feeding[2][k], mode = "lines", name = "host cells feeding the chamber (right axis)",
+                     xaxis = "x", yaxis = yaxis, line = attr(color = MAGERES_FEEDING_COLOR, width = 1.5),
+                     hovertemplate = "%{y:d} cells<extra>host feeding the chamber</extra>", kw...)
+end
+
+"""
+    mageres_feeding_axis(; kw...)
+
+    Right-hand axis of the number of host-rock cells feeding the chamber.
+"""
+mageres_feeding_axis(; kw...) =
+    attr(; title = attr(text = "Feeding host cells", font = attr(color = MAGERES_FEEDING_COLOR)),
+           side = "right", showgrid = false, zeroline = false, rangemode = "tozero", ticks = "outside",
+           tickfont = attr(color = MAGERES_FEEDING_COLOR), linecolor = MAGERES_FEEDING_COLOR, showline = true,
+           kw...)
 
 """
     mageres_injection_T_axis(; kw...)
@@ -235,16 +282,18 @@ mageres_panel_legend(y::Float64) =
          font = attr(size = 11), tracegroupgap = 2, traceorder = "normal")
 
 """
-    mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
+    mageres_zircon_sequence_stats_figure(seq; T_injection = nothing, feeding = nothing)
 
-    Statistics of the zircon of each sample against eruption age, in four panels, each with its legend below it:
+    Statistics of the zircon of each sample against eruption age, in five panels, each with its legend below it:
     (a) age before eruption of the erupted zircon mass (5–95 % band, mean = mean residence time, youngest zircon)
-    with the weighted mean of the synthetic spots ± 2σ; (b) MSWD of the spots; (c) skewness and excess kurtosis of
-    the zircon mass; (d) the erupted zircon mass split into autocrysts (crystallised since the previous eruption),
-    antecrysts (crystallised before it) and inherited zircon, stacked to 100 %.
-    With `T_injection` (times [yr], temperatures [°C]), the temperature of every injection is drawn on the right axis of (a).
+    with the weighted mean of the synthetic spots ± 2σ; (a') the same; (b) MSWD of the spots; (c) skewness and excess
+    kurtosis of the zircon mass; (d) the erupted zircon mass split into autocrysts (crystallised since the previous
+    eruption), antecrysts (crystallised before it) and inherited zircon, stacked to 100 %.
+    With `T_injection` (times [yr], temperatures [°C]), the temperature of every injection is drawn on the right axis
+    of (a); with `feeding` (times [yr], counts, `mageres_feeding_series`), the number of host-rock cells feeding the
+    chamber on the right axis of (a').
 """
-function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
+function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing, feeding = nothing)
     p = mageres_sequence_empty(seq)
     p === nothing || return p
     S   = seq.stats
@@ -253,7 +302,7 @@ function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
     E   = seq.entries[o]
     x   = [s.erupt_age for s in S]
     hov = [mageres_seq_label(e) for e in E]
-    dom = [[0.0, 0.17], [0.29, 0.44], [0.54, 0.68], [0.79, 1.0]]
+    dom = [[0.0, 0.15], [0.24, 0.36], [0.44, 0.56], [0.85, 1.0], [0.64, 0.78]]
     span = max(maximum(x) - minimum(x), 1.0)
     x_lo = minimum(x) - 0.03 * span
     x_hi = maximum(x) + 0.03 * span
@@ -262,20 +311,27 @@ function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
         scatter(; x = x, y = y, mode = "lines+markers", name = name, xaxis = "x", yaxis = ax, legend = lg, text = hov,
                   line = attr(color = col, dash = dash, width = 1.5), marker = attr(color = col, size = 5),
                   hovertemplate = "%{y:.3g}<extra>%{text}</extra>", kw...)
-    push!(tr, scatter(; x = x, y = [s.q95 - s.erupt_age for s in S], mode = "lines", yaxis = "y4", xaxis = "x",
-                        legend = "legend", line = attr(width = 0), showlegend = false, hoverinfo = "skip"))
-    push!(tr, scatter(; x = x, y = [s.q05 - s.erupt_age for s in S], mode = "lines", yaxis = "y4", xaxis = "x",
-                        legend = "legend", fill = "tonexty", fillcolor = "rgba(0,114,189,0.18)", line = attr(width = 0),
-                        name = "zircon mass 5–95 %", hoverinfo = "skip"))
-    push!(tr, ln([s.residence for s in S], "mean (residence time)", MAGERES_SEQ_COLOR, "y4", "legend"))
-    push!(tr, ln([s.youngest - s.erupt_age for s in S], "youngest zircon", "rgb(60,160,60)", "y4", "legend";
-                 dash = "dot"))
-    push!(tr, scatter(; x = x, y = [s.wm - s.erupt_age for s in S], mode = "markers", name = "spots: weighted mean ± 2σ",
-                        xaxis = "x", yaxis = "y4", legend = "legend", text = hov,
-                        marker = attr(color = "black", size = 6, symbol = "diamond"),
-                        error_y = attr(type = "data", array = [2s.wm_sigma for s in S], visible = true,
-                                       color = "rgb(90,90,90)", thickness = 1, width = 0),
-                        hovertemplate = "%{y:.2f} kyr<extra>%{text}</extra>"))
+    function residence_panel!(ax::AbstractString, lg::AbstractString)
+        push!(tr, scatter(; x = x, y = [s.q95 - s.erupt_age for s in S], mode = "lines", yaxis = ax, xaxis = "x",
+                            legend = lg, line = attr(width = 0), showlegend = false, hoverinfo = "skip"))
+        push!(tr, scatter(; x = x, y = [s.q05 - s.erupt_age for s in S], mode = "lines", yaxis = ax, xaxis = "x",
+                            legend = lg, fill = "tonexty", fillcolor = "rgba(0,114,189,0.18)", line = attr(width = 0),
+                            name = "zircon mass 5–95 %", hoverinfo = "skip"))
+        push!(tr, ln([s.residence for s in S], "mean (residence time)", MAGERES_SEQ_COLOR, ax, lg))
+        push!(tr, ln([s.youngest - s.erupt_age for s in S], "youngest zircon", "rgb(60,160,60)", ax, lg;
+                     dash = "dot"))
+        push!(tr, scatter(; x = x, y = [s.wm - s.erupt_age for s in S], mode = "markers",
+                            name = "spots: weighted mean ± 2σ", xaxis = "x", yaxis = ax, legend = lg, text = hov,
+                            marker = attr(color = "black", size = 6, symbol = "diamond"),
+                            error_y = attr(type = "data", array = [2s.wm_sigma for s in S], visible = true,
+                                           color = "rgb(90,90,90)", thickness = 1, width = 0),
+                            hovertemplate = "%{y:.2f} kyr<extra>%{text}</extra>"))
+        return tr
+    end
+    residence_panel!("y4", "legend")
+    residence_panel!("y6", "legend5")
+    ba = mageres_feeding_trace(feeding, seq.t_ref, x_lo, x_hi; yaxis = "y7", legend = "legend5")
+    ba === nothing || push!(tr, ba)
     tb = mageres_injection_T_trace(T_injection, seq.t_ref, x_lo, x_hi; yaxis = "y5", legend = "legend")
     tb === nothing || push!(tr, tb)
     push!(tr, ln([s.mswd for s in S], "MSWD of spots", "black", "y3", "legend2"))
@@ -295,10 +351,10 @@ function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
                             hovertemplate = "%{y:.1f} %<extra>%{text}</extra>"))
     end
     layout = Layout(; title        = "Zircon statistics through the eruption sequence",
-                      height       = 1150,
+                      height       = 1400,
                       plot_bgcolor = "white",
                       showlegend   = true,
-                      margin       = attr(l = 80, r = tb === nothing ? 30 : 80, t = 50, b = 110),
+                      margin       = attr(l = 80, r = (tb === nothing && ba === nothing) ? 30 : 80, t = 50, b = 110),
                       xaxis        = mageres_seq_axis(@sprintf("Eruption age before t = %.1f kyr (kyr)", seq.t_ref / 1e3);
                                                       anchor = "y", range = [x_hi, x_lo]),
                       yaxis        = mageres_seq_axis("Erupted zircon mass (%)"; domain = dom[1], anchor = "x",
@@ -308,10 +364,14 @@ function mageres_zircon_sequence_stats_figure(seq; T_injection = nothing)
                       yaxis4       = mageres_seq_axis("Age before eruption (kyr)"; domain = dom[4], anchor = "x",
                                                       rangemode = "tozero", mirror = tb === nothing),
                       yaxis5       = mageres_injection_T_axis(; overlaying = "y4", anchor = "x"),
+                      yaxis6       = mageres_seq_axis("Age before eruption (kyr)"; domain = dom[5], anchor = "x",
+                                                      rangemode = "tozero", mirror = ba === nothing),
+                      yaxis7       = mageres_feeding_axis(; overlaying = "y6", anchor = "x"),
                       legend       = mageres_panel_legend(dom[4][1] - 0.012),
+                      legend5      = mageres_panel_legend(dom[5][1] - 0.012),
                       legend2      = mageres_panel_legend(dom[3][1] - 0.012),
                       legend3      = mageres_panel_legend(dom[2][1] - 0.012),
-                      legend4      = mageres_panel_legend(-0.075))
+                      legend4      = mageres_panel_legend(-0.062))
     return PlotlyJS.plot(tr, layout)
 end
 

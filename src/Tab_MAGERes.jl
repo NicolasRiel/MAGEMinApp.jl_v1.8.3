@@ -43,6 +43,10 @@ const MAGERES_ENUM_FIELDS = Dict{Symbol,Vector{Dict{String,Any}}}(
                           Dict("label" => "Overpressure (eruptible above the melt fraction)",
                                "value" => "overpressure")],
     :te_enabled       => [Dict("label" => "false", "value" => false), Dict("label" => "true", "value" => true)],
+    :comp_var_host      => [Dict("label" => "Fixed", "value" => false), Dict("label" => "Random", "value" => true)],
+    :comp_var_injection => [Dict("label" => "Fixed", "value" => false), Dict("label" => "Random", "value" => true)],
+    :comp_var_law     => [Dict("label" => "Concentration-scaled (Horwitz-type)", "value" => "scaled"),
+                          Dict("label" => "Constant (same 1σ for every component)",        "value" => "constant")],
     :zircon_method    => [Dict("label" => "SIMS U-Th (absolute σ)",      "value" => "SIMS_UTh"),
                           Dict("label" => "LA-ICP-MS U-Pb (1 % 1σ)",     "value" => "LA_UPb"),
                           Dict("label" => "CA-ID-TIMS U-Pb (0.05 % 1σ)", "value" => "TIMS_UPb")],
@@ -85,6 +89,23 @@ const MAGERES_SIGNAL_FIELDS = (:T_inj_peak_C, :T_inj_peak_yr, :T_inj_peak_rise_y
 
 const MAGERES_SIGNAL_INPUTS = (:T_injection_C, :T_injection_mode, MAGERES_SIGNAL_FIELDS..., :injection_period_yr,
                                :first_injection_yr, :run_time_yr)
+
+const MAGERES_COMP_VAR_FIELDS = (:comp_var_law, :comp_var_ref_pct, :comp_var_exponent, :comp_var_max_pct,
+                                 :comp_var_host_corr_m, :comp_var_seed)
+
+const MAGERES_COMP_VAR_INPUTS = (:comp_var_host, :comp_var_injection, MAGERES_COMP_VAR_FIELDS...)
+
+"""
+    mageres_comp_var_row_style(f::Symbol, host::Bool, injection::Bool, law)
+
+    Style of the row of composition-variability field `f`: hidden when neither the host nor the injected composition
+    varies, the exponent only shown for the "scaled" law and the correlation length only with host variability.
+"""
+function mageres_comp_var_row_style(f::Symbol, host::Bool, injection::Bool, law)
+    hide = !(host || injection) || (f == :comp_var_exponent && law != "scaled") ||
+           (f == :comp_var_host_corr_m && !host)
+    return hide ? Dict("display" => "none") : Dict{String,String}()
+end
 
 """
     mageres_signal_row_style(mode)
@@ -150,8 +171,9 @@ function mageres_option_row(f::Symbol, label::AbstractString, default)
     end
     return html_div(id       = mageres_row_id(f),
                     children = [mageres_labelled_row(label, control)],
-                    style    = f in MAGERES_SIGNAL_FIELDS ? mageres_signal_row_style(MAGEResOptions().T_injection_mode) :
-                                                            mageres_row_style(f, MAGEResOptions().thermodynamics))
+                    style    = f in MAGERES_SIGNAL_FIELDS   ? mageres_signal_row_style(MAGEResOptions().T_injection_mode) :
+                               f in MAGERES_COMP_VAR_FIELDS ? mageres_comp_var_row_style(f, false, false, "scaled") :
+                                                              mageres_row_style(f, MAGEResOptions().thermodynamics))
 end
 
 """
@@ -281,7 +303,14 @@ function mageres_config_tab(group::AbstractString, fields)
     end
     for (f, label) in fields
         f in MAGERES_DRAWER_FIELDS && continue
+        f == :comp_var_host && append!(children, [html_hr(), html_h1("Composition variability",
+                                                  style = Dict("textAlign" => "center", "font-size" => "120%"))])
         push!(children, mageres_option_row(f, label, getfield(o, f)))
+    end
+    if group == "Model properties"
+        append!(children, [ dcc_graph(  id     = "mageres-comp-var-preview-fig",
+                                        figure = mageres_comp_var_figure(o),
+                                        config = Dict("displaylogo" => false))])
     end
     if group == "Injection"
         append!(children, [ html_hr(),

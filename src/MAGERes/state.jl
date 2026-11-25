@@ -257,19 +257,21 @@ end
 """
     mageres_host_density_at(st::MAGEResState, y::Real)
 
-    Host-rock conserved-quantity density at height `y`, from the host profile or the geotherm.
+    Host-rock conserved-quantity density at height `y`, from the host profile or the host material of that height
+    along the geotherm.
 """
 mageres_host_density_at(st::MAGEResState, y::Real) =
-    st.thermo === nothing ? mageres_content_density(st.host, mageres_geotherm_T(st.opts, y)) :
+    st.thermo === nothing ? mageres_content_density(mageres_host_material(st.opts, y), mageres_geotherm_T(st.opts, y)) :
                             mageres_profile_density(st.thermo.profile, y)
 
 """
     mageres_injected_density(st::MAGEResState)
 
-    Conserved-quantity density of the injected magma at the current injection temperature.
+    Conserved-quantity density of the injected magma (next batch) at the current injection temperature.
 """
 mageres_injected_density(st::MAGEResState) =
-    st.thermo === nothing ? mageres_content_density(st.injection, mageres_injection_T(st.opts, st.t)) :
+    st.thermo === nothing ? mageres_content_density(mageres_injection_material(st.opts, st.chamber.n_injections + 1),
+                                                    mageres_injection_T(st.opts, st.t)) :
                             st.thermo.injection_density
 
 """
@@ -309,7 +311,7 @@ function mageres_init_state(opts::MAGEResOptions = MAGEResOptions(); mm = nothin
     nf    = th === nothing ? MAGERES_IN0 - 1 + length(o.oxides) : size(th.profile.density, 1)
     Q     = zeros(nf, mageres_ncells(g))
     for n in 1:mageres_ncells(g)
-        Q[:, n] .= (th === nothing ? mageres_content_density(host, mageres_geotherm_T(o, g.yc[n])) :
+        Q[:, n] .= (th === nothing ? mageres_content_density(mageres_host_material(o, g.yc[n]), mageres_geotherm_T(o, g.yc[n])) :
                     mageres_profile_density(th.profile, g.yc[n])) .* g.area[n]
     end
     if th !== nothing

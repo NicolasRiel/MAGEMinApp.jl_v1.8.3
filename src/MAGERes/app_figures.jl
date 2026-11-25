@@ -918,6 +918,59 @@ function mageres_svg_cells(st::MAGEResState, field::Symbol)
 end
 
 """
+    mageres_comp_var_figure(o::MAGEResOptions)
+
+    Preview of the composition variability of `o`: the relative standard deviation of the law against concentration,
+    and the components of the injected magma and of the host rock (oxides and trace elements) on it.
+"""
+function mageres_comp_var_figure(o::MAGEResOptions)
+    wg     = 10 .^ range(-7, 2; length = 361)
+    traces = GenericTrace[scatter(; x = wg, y = [100 * mageres_comp_sigma(o, w / 100) for w in wg], mode = "lines",
+                                    name = o.comp_var_law == "scaled" ? "law (concentration-scaled)" : "law (constant)",
+                                    line = attr(color = "rgb(90,90,90)", width = 1.5), hoverinfo = "skip")]
+    el, C_inj, C_host = o.te_enabled ? (isempty(o.te_elements) ? mageres_te_inputs(o) :
+                                        (o.te_elements, o.te_injection_ppm, o.te_host_ppm)) :
+                                       (String[], Float64[], Float64[])
+    for (name, x, C, color, on) in (("Injected magma", mageres_injection_base_bulk(o), C_inj, "rgb(217,95,2)",
+                                     o.comp_var_injection),
+                                    ("Host rock", mageres_normalized(o.host_bulk), C_host, "rgb(70,110,170)",
+                                     o.comp_var_host))
+        w  = 100 .* mageres_oxide_mass_fractions(o.oxides, x)
+        ko = [k for k in eachindex(w) if w[k] > 0]
+        kt = [k for k in eachindex(C) if C[k] > 0]
+        tag = on ? "" : " (fixed)"
+        push!(traces, scatter(; x = w[ko], y = [100 * mageres_comp_sigma(o, w[k] / 100) for k in ko],
+                                mode = "markers", text = o.oxides[ko], name = name * ", oxides" * tag,
+                                marker = attr(color = color, size = 8, symbol = "circle", opacity = on ? 1.0 : 0.4),
+                                hovertemplate = "%{text}: %{x:.3g} wt%, 1σ %{y:.1f} %<extra>$(name)</extra>"))
+        isempty(kt) && continue
+        push!(traces, scatter(; x = 1e-4 .* C[kt], y = [100 * mageres_comp_sigma(o, 1e-6 * C[k]) for k in kt],
+                                mode = "markers", text = el[kt], name = name * ", trace elements" * tag,
+                                marker = attr(color = color, size = 7, symbol = "diamond-open",
+                                              opacity = on ? 1.0 : 0.4),
+                                hovertemplate = "%{text}: %{customdata:.3g} µg/g, 1σ %{y:.1f} %<extra>$(name)</extra>",
+                                customdata = C[kt]))
+    end
+    varied = [n for (n, on) in (("host rock", o.comp_var_host), ("injected magma", o.comp_var_injection)) if on]
+    note   = isempty(varied) ? "fixed compositions" : "varied: " * join(varied, ", ")
+    ymax   = 100 * min(o.comp_var_max_pct / 100, max(mageres_comp_sigma(o, 1e-9), mageres_comp_sigma(o, 1.0))) * 1.15
+    layout = Layout(; height       = 380,
+                      plot_bgcolor = "white",
+                      margin       = attr(l = 70, r = 20, t = 20, b = 60),
+                      showlegend   = true,
+                      legend       = attr(orientation = "h", y = -0.25),
+                      xaxis        = attr(title = "Concentration (wt%)", type = "log", range = [-7, 2], showline = true,
+                                          linecolor = "black", mirror = true, ticks = "outside", exponentformat = "power"),
+                      yaxis        = attr(title = "1σ (%)", range = [0, max(ymax, 1.0)], showline = true,
+                                          linecolor = "black", mirror = true, ticks = "outside"),
+                      annotations  = [attr(x = 0.99, xref = "paper", xanchor = "right", y = 0.98, yref = "paper",
+                                           yanchor = "top", showarrow = false, align = "right", text = note,
+                                           bgcolor = "rgba(255,255,255,0.85)", bordercolor = "#ccc", borderwidth = 1,
+                                           font = attr(size = 11))])
+    return PlotlyJS.plot(traces, layout)
+end
+
+"""
     mageres_injection_T_figure(o::MAGEResOptions)
 
     Preview of the injection temperature of `o` over the run: the signal on a fine time grid, the temperatures of the

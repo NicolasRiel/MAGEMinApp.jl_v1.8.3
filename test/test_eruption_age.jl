@@ -106,4 +106,20 @@ end
     @test length(split(lines[2], ",")) == length(split(lines[3], ","))
 end
 
+@testset "host cells feeding the chamber" begin
+    t  = collect(0.0:1_000.0:10_000.0)
+    n  = [0, 0, 2, 5, 9, 12, 10, 7, 7, 4, 1]
+    tr = MA.mageres_feeding_trace((t, n), 10_000.0, 0.0, 10.0; yaxis = "y7")
+    @test tr.fields[:y] == reverse(n)
+    @test tr.fields[:x] == reverse(10.0 .- t ./ 1e3)
+    @test MA.mageres_feeding_trace((t, n), 10_000.0, 20.0, 30.0; yaxis = "y7") === nothing
+    @test MA.mageres_feeding_trace(nothing, 10_000.0, 0.0, 10.0; yaxis = "y7") === nothing
+    rng  = MersenneTwister(3)
+    E    = [MA.MAGEResSeqEntry(seq_sample(t, [1.0, 2.0, 3.0, 1.0, 0.0], 1 .+ 3 .* rand(rng, 30) .+ (10 - t / 1e3)),
+                               hash(t), 1e6, 850.0, t - 2000, t > 6000) for t in (2_500.0, 4_000.0, 8_000.0)]
+    seq2 = MA.MAGEResSequence(E, [MA.mageres_seq_stats(e, 1000.0, 10_000.0) for e in E],
+                              MA.mageres_seq_estimates(E, 10_000.0), 10_000.0, MA.MAGEResOptions())
+    @test MA.mageres_zircon_sequence_stats_figure(seq2; feeding = (t, n)) !== nothing
+end
+
 end
