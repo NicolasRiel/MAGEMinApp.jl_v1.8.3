@@ -172,25 +172,27 @@ function Tab_MonteCarlo_Callbacks(app)
         Input("mc-show-boundaries-switch","value"),
         Input("mc-smooth-lines-switch","value"),
         Input("mc-phase-apply-button","n_clicks"),
+        Input("axis-ticks-store",     "data"),
 
         State("mc-phase-selection",   "value"),
         State("mc-max-lines",         "value"),
 
         prevent_initial_call = true,
-    ) do mc_done, _n_canvas, show_labels, label_bg, show_bounds, smooth_lines, _n_apply, phase_sel, max_lines
+    ) do mc_done, _n_canvas, show_labels, label_bg, show_bounds, smooth_lines, _n_apply, tick_store, phase_sel, max_lines
 
         global mc_result, mc_shown_phases, mc_shown_max
-        bid = pushed_button( callback_context() )
+        bid  = pushed_button( callback_context() )
+        spec = current_axis_tick_spec(tick_store)
 
         if bid == "mc-canvas-button"
             return no_update(), no_update(), no_update(), no_update(), true
         end
 
-        if bid in ("mc-show-labels-switch", "mc-label-bg-switch", "mc-show-boundaries-switch", "mc-smooth-lines-switch")
+        if bid in ("mc-show-labels-switch", "mc-label-bg-switch", "mc-show-boundaries-switch", "mc-smooth-lines-switch", "axis-ticks-store")
             if isnothing(mc_result)
                 return no_update(), no_update(), no_update(), no_update(), no_update()
             end
-            fig = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = something(mc_shown_max, mc_default_max_lines), show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true)
+            fig = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = something(mc_shown_max, mc_default_max_lines), show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true, tick_spec = spec)
             return fig, no_update(), no_update(), no_update(), no_update()
         end
 
@@ -200,7 +202,7 @@ function Tab_MonteCarlo_Callbacks(app)
             end
             mc_shown_phases = Vector{String}(something(phase_sel, String[]))
             mc_shown_max    = mc_max_lines_value(max_lines)
-            fig = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = mc_shown_max, show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true)
+            fig = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = mc_shown_max, show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true, tick_spec = spec)
             return fig, no_update(), no_update(), no_update(), no_update()
         end
 
@@ -211,7 +213,7 @@ function Tab_MonteCarlo_Callbacks(app)
                 _, N_str, t_str = split(mc_done, ":")
                 mc_shown_phases = Vector{String}(mc_phases_to_draw(mc_result))
                 mc_shown_max    = mc_max_lines_value(max_lines)
-                fig    = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = mc_shown_max, show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true)
+                fig    = mc_build_figure(mc_result, show_labels; phases = mc_shown_phases, max_lines = mc_shown_max, show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true, tick_spec = spec)
                 status = "Done: $N_str $(mc_run_word(mc_result)) in $t_str s."
                 return fig, status, false, no_update(), true
             end
@@ -259,14 +261,25 @@ function Tab_MonteCarlo_Callbacks(app)
         Output("mc-heatmap",        "figure"),
 
         Input("mc-heatmap-compute-button", "n_clicks"),
+        Input("axis-ticks-store",          "data"),
 
         State("mc-heatmap-target",     "value"),
         State("mc-heatmap-match-mode", "value"),
 
         prevent_initial_call = true,
-    ) do _n_clicks, target_str, match_mode
+    ) do _n_clicks, tick_store, target_str, match_mode
 
         global mc_result, gridded_fields, mc_probability_last
+        spec = current_axis_tick_spec(tick_store)
+
+        if pushed_button( callback_context() ) == "axis-ticks-store"
+            if isnothing(mc_probability_last) || mc_probability_last.mc_res !== mc_result
+                return no_update(), no_update()
+            end
+            last = mc_probability_last
+            return no_update(), mc_heatmap_figure(mc_probability_traces_from_parts(last.parts), last.mc_res.Xrange, last.mc_res.Yrange;
+                                                  title_prefix = mc_probability_prefix(last.mc_res), tick_spec = spec)
+        end
 
         if isnothing(mc_result)
             return "Run Monte Carlo first.", no_update()
@@ -298,7 +311,7 @@ function Tab_MonteCarlo_Callbacks(app)
             status *= " The target phases are almost never stable together, so the heatmap is nearly empty - try fewer phases."
         end
 
-        return status, mc_heatmap_figure(traces, mc_result.Xrange, mc_result.Yrange; title_prefix = mc_probability_prefix(mc_result))
+        return status, mc_heatmap_figure(traces, mc_result.Xrange, mc_result.Yrange; title_prefix = mc_probability_prefix(mc_result), tick_spec = spec)
     end
 
     """
@@ -399,9 +412,10 @@ function Tab_MonteCarlo_Callbacks(app)
         State("mc-show-boundaries-switch", "value"),
         State("mc-smooth-lines-switch",    "value"),
         State("mc-label-bg-switch",        "value"),
+        State("axis-ticks-store",          "data"),
 
         prevent_initial_call = true,
-    ) do _n, show_labels, show_bounds, smooth_lines, label_bg
+    ) do _n, show_labels, show_bounds, smooth_lines, label_bg, tick_store
 
         global mc_result, mc_shown_phases, mc_shown_max, output_dir
 
@@ -416,7 +430,8 @@ function Tab_MonteCarlo_Callbacks(app)
             path  = output_dir[1] * fname * (mc_is_linear(mc_result) ? "_Linear.svg" : "_MC.svg")
             r = mc_export_svg(mc_result, path; show_labels = show_labels == true, phases = mc_shown_phases,
                                max_lines = something(mc_shown_max, mc_default_max_lines),
-                               show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true)
+                               show_boundaries = show_bounds == true, smooth_lines = smooth_lines == true, label_bg = label_bg == true,
+                               tick_spec = current_axis_tick_spec(tick_store))
             return "Saved $(r.path) ($(round(r.bytes / 1024, digits = 1)) KB, $(r.n_paths) paths)."
         catch e
             return "Export failed: " * sprint(showerror, e)
@@ -437,8 +452,10 @@ function Tab_MonteCarlo_Callbacks(app)
 
         Input("mc-heatmap-export-svg-button", "n_clicks"),
 
+        State("axis-ticks-store", "data"),
+
         prevent_initial_call = true,
-    ) do _n
+    ) do _n, tick_store
 
         global mc_result, mc_probability_last, output_dir
 
@@ -454,7 +471,7 @@ function Tab_MonteCarlo_Callbacks(app)
             title = string(mc_diagram_title("")[:text])
             fname = isempty(title) ? "Probability" : replace(title, r"[ /\\:]" => "_")
             path  = output_dir[1] * fname * "_Probability.svg"
-            r = mc_export_probability_svg(mc_probability_last.parts, path)
+            r = mc_export_probability_svg(mc_probability_last.parts, path; tick_spec = current_axis_tick_spec(tick_store))
             return "Saved $(r.path) ($(round(r.bytes / 1024, digits = 1)) KB, $(r.n_paths) paths)."
         catch e
             return "Export failed: " * sprint(showerror, e)
@@ -596,7 +613,7 @@ end
                      show_boundaries = true, smooth_lines = false)
 
     Everything the Uncertainty diagram shows, as data, in the selected pressure
-    unit: `(sets, reference, annotations, xrange, yrange, ticks, title, xtitle,
+    unit: `(sets, reference, annotations, xrange, yrange, title, xtitle,
     ytitle)`. `sets` are the realization lines per phase
     ([`mc_spaghetti_sets`](@ref); `phases` restricts them to that subset and
     `max_lines` is how many realizations are drawn), `reference` the primary
@@ -643,7 +660,7 @@ function mc_figure_parts(mc_res; show_labels::Bool = false, phases::Union{Nothin
     t = mc_diagram_title(mc_title_prefix(mc_res))
     return (sets = sets, reference = reference, annotations = annotations,
             xrange = collect(Float64.(mc_res.Xrange)), yrange = [display_pressure(Float64(y)) for y in mc_res.Yrange],
-            ticks = 4, title = string(t[:text]),
+            title = string(t[:text]),
             xtitle = "Temperature [Celsius]", ytitle = "Pressure [$(pressure_unit_label())]")
 end
 
@@ -663,11 +680,11 @@ end
     nothing below the plot, so its own bottom margin only needs room for the
     axis title/ticks (`b=60`) - same plot area and P-T proportions, without the
     leftover blank space a copied `b=260` would leave beneath it. Same frame and
-    tick styling (`get_plot_frame`).
+    tick styling ([`apply_axis_ticks!`](@ref)).
 """
 function mc_build_figure(mc_res, show_labels; phases::Union{Nothing,Vector{String}} = nothing,
                           max_lines::Int = mc_default_max_lines, show_boundaries::Bool = true, smooth_lines::Bool = false,
-                          label_bg::Bool = false)
+                          label_bg::Bool = false, tick_spec = AXIS_TICKS[])
     parts  = mc_figure_parts(mc_res; show_labels = show_labels == true, phases = phases, max_lines = max_lines,
                               show_boundaries = show_boundaries, smooth_lines = smooth_lines, label_bg = label_bg)
     linear    = mc_is_linear(mc_res)
@@ -675,10 +692,8 @@ function mc_build_figure(mc_res, show_labels; phases::Union{Nothing,Vector{Strin
                          GenericTrace[mc_spaghetti_trace(set) for set in parts.sets]
     traces    = vcat(spaghetti, parts.reference, linear ? GenericTrace[mc_step_key_trace()] : GenericTrace[])
     xr, yr = parts.xrange, parts.yrange
-    frame  = get_plot_frame(mc_res.Xrange, mc_res.Yrange, parts.ticks)
-
     mc_layout = Layout(
-        images        = frame,
+        images        = diagram_logo_images(),
         title         = mc_diagram_title(mc_title_prefix(mc_res)),
         width         = 720,
         height        = 700,
@@ -689,14 +704,13 @@ function mc_build_figure(mc_res, show_labels; phases::Union{Nothing,Vector{Strin
         xaxis_title   = parts.xtitle,
         yaxis_title   = parts.ytitle,
         annotations   = parts.annotations,
-        margin        = attr(autoexpand = false, l = 0, r = 116, b = 60, t = 50, pad = 1),
+        margin        = attr(autoexpand = false, l = 0, r = 116, b = 60, t = 50, pad = 0),
         xaxis_range   = xr,
         yaxis_range   = yr,
-        xaxis         = attr(tickmode = "linear", tick0 = xr[1],
-                              dtick = (xr[2] - xr[1]) / (parts.ticks + 1), fixedrange = true),
-        yaxis         = attr(tickmode = "linear", tick0 = yr[1],
-                              dtick = (yr[2] - yr[1]) / (parts.ticks + 1), fixedrange = true),
+        xaxis         = attr(fixedrange = true),
+        yaxis         = attr(fixedrange = true),
     )
+    apply_axis_ticks!(mc_layout, tick_spec; xr = xr, yr = yr, xtitle = parts.xtitle, ytitle = parts.ytitle)
     return plot(traces, mc_layout)
 end
 
@@ -706,19 +720,19 @@ end
     Wrap the probability map's `traces` in exactly the Uncertainty diagram's
     canvas ([`mc_build_figure`](@ref)): 720 x 700 px with the same margins, so
     the two diagrams have the same size and plot area, the same
-    `get_plot_frame` outline/ticks and the same linear ticks and fixed axes
+    outline and ticks ([`apply_axis_ticks!`](@ref)) and fixed axes
     (pressure in the selected display unit). The right margin, where the
     diagram has its phase legend, holds the colorbar (top) and the per-phase
     contour legend (below it).
 """
-function mc_heatmap_figure(traces, Xrange, Yrange; title_prefix::String = "Probability - ")
-    ticks = 4
-    frame = get_plot_frame(Xrange, Yrange, ticks)
-    y1    = display_pressure(Float64(Yrange[1]))
-    y2    = display_pressure(Float64(Yrange[2]))
+function mc_heatmap_figure(traces, Xrange, Yrange; title_prefix::String = "Probability - ", tick_spec = AXIS_TICKS[])
+    y1     = display_pressure(Float64(Yrange[1]))
+    y2     = display_pressure(Float64(Yrange[2]))
+    xtitle = "Temperature [Celsius]"
+    ytitle = "Pressure [$(pressure_unit_label())]"
 
     heat_layout = Layout(
-        images        = frame,
+        images        = diagram_logo_images(),
         title         = mc_diagram_title(title_prefix),
         width         = 720,
         height        = 700,
@@ -726,17 +740,16 @@ function mc_heatmap_figure(traces, Xrange, Yrange; title_prefix::String = "Proba
         hoverlabel    = attr(bgcolor = "#566573", bordercolor = "#f8f9f9"),
         plot_bgcolor  = "#FFF",
         paper_bgcolor = "#FFF",
-        xaxis_title   = "Temperature [Celsius]",
-        yaxis_title   = "Pressure [$(pressure_unit_label())]",
-        margin        = attr(autoexpand = false, l = 0, r = 116, b = 60, t = 50, pad = 1),
+        xaxis_title   = xtitle,
+        yaxis_title   = ytitle,
+        margin        = attr(autoexpand = false, l = 0, r = 116, b = 60, t = 50, pad = 0),
         legend        = attr(x = 1.02, xanchor = "left", y = 0.5, yanchor = "top"),
         xaxis_range   = collect(Xrange),
         yaxis_range   = [y1, y2],
-        xaxis         = attr(tickmode = "linear", tick0 = Xrange[1],
-                              dtick = (Xrange[2] - Xrange[1]) / (ticks + 1), fixedrange = true),
-        yaxis         = attr(tickmode = "linear", tick0 = y1,
-                              dtick = (y2 - y1) / (ticks + 1), fixedrange = true),
+        xaxis         = attr(fixedrange = true),
+        yaxis         = attr(fixedrange = true),
     )
+    apply_axis_ticks!(heat_layout, tick_spec; xr = collect(Xrange), yr = [y1, y2], xtitle = xtitle, ytitle = ytitle)
     return plot(traces, heat_layout)
 end
 

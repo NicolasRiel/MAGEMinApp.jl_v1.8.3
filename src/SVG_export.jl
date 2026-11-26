@@ -393,22 +393,43 @@ end
 
 """
     svg_layout_layers(io, c, seen; xticks, yticks, xtitle, ytitle, title,
-                       font = "Helvetica, Arial, sans-serif", ink = "#333333")
+                       font = "Helvetica, Arial, sans-serif", ink = "#333333",
+                       xticklabels, yticklabels, xtick_angle,
+                       xminor, yminor, tick_len, minor_len, tick_dir, mirror)
 
-    The `Layout` layer of a figure: `Outline` (frame rectangle), `Ticks` (marks on
-    all four sides at `xticks`/`yticks`, data values), `Tick_labels` (bottom and
-    left), `Axis_titles` (the y title rotated -90) and `Title`. Shared by every
-    exporter so all of them have the same frame and tick styling.
+    The `Layout` layer of a figure: `Outline` (frame rectangle), `Ticks` (major marks
+    at `xticks`/`yticks`, data values, with a `Ticks_minor` sub-group for
+    `xminor`/`yminor` when given), `Tick_labels` (bottom and left; empty labels are
+    not written), `Axis_titles` (the y title rotated -90) and `Title`. `tick_dir` is
+    `"outside"` or `"inside"`; `mirror` repeats the marks on the top and right sides.
+    Shared by every exporter so all of them have the same frame and tick styling.
 """
 function svg_layout_layers(io::IO, c::SVGCanvas, seen::Set{String}; xticks, yticks, xtitle::AbstractString,
                             ytitle::AbstractString, title::AbstractString,
                             font::AbstractString = "Helvetica, Arial, sans-serif", ink::AbstractString = "#333333",
-                            xticklabels = nothing, yticklabels = nothing, xtick_angle::Real = 0)
+                            xticklabels = nothing, yticklabels = nothing, xtick_angle::Real = 0,
+                            xminor = Float64[], yminor = Float64[], tick_len::Real = 4.0, minor_len::Real = 2.0,
+                            tick_dir::AbstractString = "outside", mirror::Bool = true)
     pw, ph = svg_plot_width(c), svg_plot_height(c)
     left, right, top, bottom = c.ml, c.ml + pw, c.mt, c.mt + ph
-    tl = 4.0
+    tl   = Float64(tick_len)
+    sgn  = tick_dir == "inside" ? -1.0 : 1.0
+    lout = tick_dir == "inside" ? 0.0 : tl
     xlab(k, v) = xticklabels === nothing ? svg_tick_label(v) : String(xticklabels[k])
     ylab(k, v) = yticklabels === nothing ? svg_tick_label(v) : String(yticklabels[k])
+
+    function marks(xs, ys, len)
+        for v in xs
+            x = svg_x(c, v)
+            svg_line(io, x, bottom, x, bottom + sgn * len)
+            mirror && svg_line(io, x, top, x, top - sgn * len)
+        end
+        for v in ys
+            y = svg_y(c, v)
+            svg_line(io, left, y, left - sgn * len, y)
+            mirror && svg_line(io, right, y, right + sgn * len, y)
+        end
+    end
 
     svg_group_open(io, svg_id(seen, "Layout"); font_family = font, font_size = 10, fill = ink)
     svg_group_open(io, svg_id(seen, "Outline"); stroke = ink, width = 1, fill = "none")
@@ -416,35 +437,37 @@ function svg_layout_layers(io::IO, c::SVGCanvas, seen::Set{String}; xticks, ytic
     svg_group_close(io)
 
     svg_group_open(io, svg_id(seen, "Ticks"); stroke = ink, width = 0.75)
-    for v in xticks
-        x = svg_x(c, v)
-        svg_line(io, x, bottom, x, bottom + tl)
-        svg_line(io, x, top, x, top - tl)
-    end
-    for v in yticks
-        y = svg_y(c, v)
-        svg_line(io, left, y, left - tl, y)
-        svg_line(io, right, y, right + tl, y)
+    marks(xticks, yticks, tl)
+    if !(isempty(xminor) && isempty(yminor))
+        svg_group_open(io, svg_id(seen, "Ticks_minor"); width = 0.5)
+        marks(xminor, yminor, Float64(minor_len))
+        svg_group_close(io)
     end
     svg_group_close(io)
 
+    ylabels = [ylab(k, v) for (k, v) in enumerate(yticks)]
     svg_group_open(io, svg_id(seen, "Tick_labels"); fill = ink)
     for (k, v) in enumerate(xticks)
+        s = xlab(k, v)
+        isempty(s) && continue
         if xtick_angle == 0
-            svg_text(io, svg_x(c, v), bottom + tl + 10, xlab(k, v); id = svg_id(seen, "Tick_x_$(k)"), anchor = "middle")
+            svg_text(io, svg_x(c, v), bottom + lout + 10, s; id = svg_id(seen, "Tick_x_$(k)"), anchor = "middle")
         else
-            svg_text(io, svg_x(c, v), bottom + tl + 8, xlab(k, v); id = svg_id(seen, "Tick_x_$(k)"),
+            svg_text(io, svg_x(c, v), bottom + lout + 8, s; id = svg_id(seen, "Tick_x_$(k)"),
                      anchor = "end", rotate = xtick_angle)
         end
     end
     for (k, v) in enumerate(yticks)
-        svg_text(io, left - tl - 4, svg_y(c, v), ylab(k, v); id = svg_id(seen, "Tick_y_$(k)"), anchor = "end")
+        isempty(ylabels[k]) && continue
+        svg_text(io, left - lout - 4, svg_y(c, v), ylabels[k]; id = svg_id(seen, "Tick_y_$(k)"), anchor = "end")
     end
     svg_group_close(io)
 
+    ytoff = lout + 4 + 5.8 * maximum(length, ylabels; init = 0) + 14
+    ytoff = ytoff > 46 ? min(ytoff, max(46.0, left - 8)) : 46.0
     svg_group_open(io, svg_id(seen, "Axis_titles"); fill = ink, font_size = 12, anchor = "middle")
-    isempty(xtitle) || svg_text(io, (left + right) / 2, bottom + (xtick_angle == 0 ? 40 : 56), xtitle; id = svg_id(seen, "Axis_title_x"))
-    isempty(ytitle) || svg_text(io, left - 46, (top + bottom) / 2, ytitle; id = svg_id(seen, "Axis_title_y"), rotate = true)
+    isempty(xtitle) || svg_text(io, (left + right) / 2, bottom + (xtick_angle == 0 ? 40 : 56) + (lout - 4), xtitle; id = svg_id(seen, "Axis_title_x"))
+    isempty(ytitle) || svg_text(io, left - ytoff, (top + bottom) / 2, ytitle; id = svg_id(seen, "Axis_title_y"), rotate = true)
     svg_group_close(io)
 
     if !isempty(title)

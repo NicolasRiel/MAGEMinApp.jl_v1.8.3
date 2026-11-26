@@ -907,7 +907,7 @@ end
     mc_probability_parts(mc_res, ref_gridded_fields, target, strict; levels = (0.025, 0.5, 0.975))
 
     Everything the probability map shows, as data, in the selected pressure unit:
-    `(grid, x, y, prob, phases, reference, levels, xrange, yrange, ticks, title,
+    `(grid, x, y, prob, phases, reference, levels, xrange, yrange, title,
     xtitle, ytitle, target, strict)`. `grid` is the target field's own
     [`mc_probability_grid`](@ref) (`x`, `y` in kbar, `prob` `[iy, ix]`, `n_present`,
     `n_total`); `x`/`y`/`prob` repeat it with `y` converted; `phases` holds, per
@@ -953,7 +953,7 @@ function mc_probability_parts(mc_res, ref_gridded_fields, target::Vector{String}
     linear = mc_is_linear(mc_res)
     return (grid = grid, x = grid.x, y = display_pressure(grid.y), prob = grid.prob, phases = phases, reference = reference,
             levels = Tuple(Float64.(levels)), xrange = collect(Float64.(mc_res.Xrange)),
-            yrange = [display_pressure(Float64(v)) for v in mc_res.Yrange], ticks = 4,
+            yrange = [display_pressure(Float64(v)) for v in mc_res.Yrange],
             title = string(mc_diagram_title(mc_probability_prefix(mc_res))[:text]),
             field_label = linear ? "fraction" : "P(field)", phase_label = linear ? "fraction of steps" : "P(phase)",
             xtitle = "Temperature [Celsius]", ytitle = "Pressure [$(pressure_unit_label())]",
@@ -1262,7 +1262,8 @@ end
 """
 function mc_export_svg(mc_res, path::AbstractString; show_labels::Bool = false,
                         phases::Union{Nothing,Vector{String}} = nothing, max_lines::Int = mc_default_max_lines,
-                        show_boundaries::Bool = true, smooth_lines::Bool = false, label_bg::Bool = false)
+                        show_boundaries::Bool = true, smooth_lines::Bool = false, label_bg::Bool = false,
+                        tick_spec = AXIS_TICKS[])
     parts = mc_figure_parts(mc_res; show_labels = show_labels, phases = phases, max_lines = max_lines,
                              show_boundaries = show_boundaries, smooth_lines = smooth_lines, label_bg = label_bg)
     xr, yr = parts.xrange, parts.yrange
@@ -1309,9 +1310,7 @@ function mc_export_svg(mc_res, path::AbstractString; show_labels::Bool = false,
 
     svg_annotation_layer(io, c, seen, parts.annotations; font = font)
 
-    nt = parts.ticks + 1
-    svg_layout_layers(io, c, seen; xticks = [xr[1] + k * (xr[2] - xr[1]) / nt for k in 0:nt],
-                       yticks = [yr[1] + k * (yr[2] - yr[1]) / nt for k in 0:nt],
+    svg_layout_layers(io, c, seen; svg_axis_tick_kwargs(tick_spec, parts.xtitle, parts.ytitle, xr, yr)...,
                        xtitle = parts.xtitle, ytitle = parts.ytitle, title = parts.title, font = font, ink = ink)
 
     if !isempty(parts.sets)
@@ -1365,7 +1364,7 @@ end
     Lines are clipped to the plot area in Julia (no clip path); every path is
     straight `M`/`L` segments. Returns `(path, bytes, n_paths)`.
 """
-function mc_export_probability_svg(parts, path::AbstractString)
+function mc_export_probability_svg(parts, path::AbstractString; tick_spec = AXIS_TICKS[])
     xr, yr = parts.xrange, parts.yrange
     c      = SVGCanvas(758.0, 700.0, 64.0, 140.0, 48.0, 62.0, xr[1], xr[2], yr[1], yr[2])
     pw, ph = svg_plot_width(c), svg_plot_height(c)
@@ -1412,9 +1411,7 @@ function mc_export_probability_svg(parts, path::AbstractString)
         svg_group_close(io)
     end
 
-    nt = parts.ticks + 1
-    svg_layout_layers(io, c, seen; xticks = [xr[1] + k * (xr[2] - xr[1]) / nt for k in 0:nt],
-                       yticks = [yr[1] + k * (yr[2] - yr[1]) / nt for k in 0:nt],
+    svg_layout_layers(io, c, seen; svg_axis_tick_kwargs(tick_spec, parts.xtitle, parts.ytitle, xr, yr)...,
                        xtitle = parts.xtitle, ytitle = parts.ytitle, title = parts.title, font = font, ink = ink)
 
     bar_x, bar_w, bar_h = right + 16, 12.0, 0.4 * ph

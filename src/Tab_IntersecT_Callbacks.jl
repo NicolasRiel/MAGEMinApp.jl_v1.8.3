@@ -577,6 +577,7 @@ function _render_intersect_figure(result, field_value::String;
     show_grid      = "true",
     fig_width      = 640,
     fig_height     = 640,
+    tick_spec      = AXIS_TICKS[],
     show_logos     = true,
 )
     values = _get_field(result, field_value)
@@ -752,9 +753,6 @@ function _render_intersect_figure(result, field_value::String;
         end
     end
 
-    ticks = 4
-    frame = get_plot_frame(data.Xrange, data.Yrange, ticks)
-
     if show_logos
         intersect_logo = attr(
             source  = "assets/static/images/Logo-IntersecT.png",
@@ -767,12 +765,8 @@ function _render_intersect_figure(result, field_value::String;
             xanchor = "left",
             yanchor = "bottom",
         )
-        # frame[1] is the MAGEMin logo; frame[2:end] are border lines and ticks
-        frame_images = vcat(collect(frame), [intersect_logo])
+        frame_images = vcat(diagram_logo_images(), [intersect_logo])
     else
-        # The image-based border lines (sizex/sizey ≈ 0.002 in paper coords) become
-        # sub-pixel at 320px and don't render. Use Plotly native axis lines instead,
-        # so pass no images at all.
         frame_images = []
     end
 
@@ -780,56 +774,15 @@ function _render_intersect_figure(result, field_value::String;
     b_margin = round(Int, fig_height *  50 / 640)
     t_margin = round(Int, fig_height *  50 / 640)
 
-    # For sub-diagrams (no logos) use Plotly's native axis showline+mirror to draw
-    # the box border — image-based lines become sub-pixel at 320px and don't render.
-    if show_logos
-        xaxis_attr = attr(
-            title      = result.x_label,
-            tickmode   = "linear",
-            tick0      = data.Xrange[1],
-            dtick      = (data.Xrange[2] - data.Xrange[1]) / (ticks + 1),
-            fixedrange = true,
-        )
-        yaxis_attr = attr(
-            title      = "P [$(pressure_unit_label())]",
-            tickmode   = "linear",
-            tick0      = display_pressure(data.Yrange[1]),
-            dtick      = display_pressure((data.Yrange[2] - data.Yrange[1]) / (ticks + 1)),
-            fixedrange = true,
-        )
-    else
-        xaxis_attr = attr(
-            title      = result.x_label,
-            tickmode   = "linear",
-            tick0      = data.Xrange[1],
-            dtick      = (data.Xrange[2] - data.Xrange[1]) / (ticks + 1),
-            fixedrange = true,
-            showline   = true,
-            linewidth  = 1,
-            linecolor  = "black",
-            mirror     = true,
-            ticks      = "outside",
-        )
-        yaxis_attr = attr(
-            title      = "P [$(pressure_unit_label())]",
-            tickmode   = "linear",
-            tick0      = display_pressure(data.Yrange[1]),
-            dtick      = display_pressure((data.Yrange[2] - data.Yrange[1]) / (ticks + 1)),
-            fixedrange = true,
-            showline   = true,
-            linewidth  = 1,
-            linecolor  = "black",
-            mirror     = true,
-            ticks      = "outside",
-        )
-    end
+    xaxis_attr = attr(title = result.x_label, fixedrange = true)
+    yaxis_attr = attr(title = "P [$(pressure_unit_label())]", fixedrange = true)
 
     ix_layout = Layout(
         images        = frame_images,
         width         = fig_width,
         height        = fig_height,
         autosize      = false,
-        margin        = attr(autoexpand=false, l=0, r=r_margin, b=b_margin, t=t_margin, pad=1),
+        margin        = attr(autoexpand=false, l=0, r=r_margin, b=b_margin, t=t_margin, pad=0),
         xaxis_range   = data.Xrange,
         yaxis_range   = [display_pressure(data.Yrange[1]), display_pressure(data.Yrange[2])],
         xaxis         = xaxis_attr,
@@ -853,6 +806,7 @@ function _render_intersect_figure(result, field_value::String;
                                                               width    =  fig_width,
                                                               scale    =  2.0,       ).fields)
 
+    apply_axis_ticks!(ix_layout, tick_spec)
     return plot(traces, ix_layout), config
 end
 
@@ -1202,8 +1156,9 @@ function Tab_IntersecT_Callbacks(app)
         Input("show-grid-ix",           "value"),
         Input("intersect-run-store-ix", "data"),
         Input("ix-iso-store-ix",        "data"),
+        Input("axis-ticks-store",       "data"),
         prevent_initial_call = true,
-    ) do field_value, colormap, zmin_val, zmax_val, color_range, set_min_white, reverse_cmap, smooth_cmap, show_full_grid, show_lbl, show_grid, _, __
+    ) do field_value, colormap, zmin_val, zmax_val, color_range, set_min_white, reverse_cmap, smooth_cmap, show_full_grid, show_lbl, show_grid, _, __, tick_store
 
         global Out_intersect
 
@@ -1221,6 +1176,7 @@ function Tab_IntersecT_Callbacks(app)
             show_full_grid = show_full_grid,
             show_lbl       = show_lbl,
             show_grid      = show_grid,
+            tick_spec      = current_axis_tick_spec(tick_store),
         )
     end
 
@@ -1236,8 +1192,9 @@ function Tab_IntersecT_Callbacks(app)
         Input("reverse-colormap-ix",     "value"),
         Input("smooth-colormap-ix",      "value"),
         Input("intersect-run-store-ix",  "data"),
+        Input("axis-ticks-store",        "data"),
         prevent_initial_call = true,
-    ) do field_value, colormap, color_range, set_min_white, reverse_cmap, smooth_cmap, _
+    ) do field_value, colormap, color_range, set_min_white, reverse_cmap, smooth_cmap, _, tick_store
 
         global Out_intersect
 
@@ -1258,6 +1215,7 @@ function Tab_IntersecT_Callbacks(app)
             fig_width      = 320,
             fig_height     = 260,
             show_logos     = false,
+            tick_spec      = current_axis_tick_spec(tick_store),
         )
     end
 
@@ -1273,8 +1231,9 @@ function Tab_IntersecT_Callbacks(app)
         Input("reverse-colormap-ix",     "value"),
         Input("smooth-colormap-ix",      "value"),
         Input("intersect-run-store-ix",  "data"),
+        Input("axis-ticks-store",        "data"),
         prevent_initial_call = true,
-    ) do field_value, colormap, color_range, set_min_white, reverse_cmap, smooth_cmap, _
+    ) do field_value, colormap, color_range, set_min_white, reverse_cmap, smooth_cmap, _, tick_store
 
         global Out_intersect
 
@@ -1295,6 +1254,7 @@ function Tab_IntersecT_Callbacks(app)
             fig_width      = 320,
             fig_height     = 260,
             show_logos     = false,
+            tick_spec      = current_axis_tick_spec(tick_store),
         )
     end
 

@@ -56,6 +56,7 @@ module MAGEMinApp
     include(joinpath(pkg_dir,"src","PhaseDiagram3D_export.jl"))
     include(joinpath(pkg_dir,"src","Plotly_ColorScales.jl"))
     include(joinpath(pkg_dir,"src","SVG_export.jl"))
+    include(joinpath(pkg_dir,"src","Axis_ticks.jl"))
     include(joinpath(pkg_dir,"src","MonteCarlo_functions.jl"))
     if ENABLE_MAGERES
         for mageres_file in ("options", "injection_signal", "composition_variability", "materials", "geometry", "chamber", "quadtree", "remap", "thermal", "thermo",
@@ -129,6 +130,7 @@ module MAGEMinApp
         cd(pkg_dir)
 
         AppData.reaction_style_presets[1] = load_reaction_style_presets();
+        AXIS_TICKS[] = load_axis_tick_prefs();
 
         app         = build_app()
 
@@ -293,6 +295,7 @@ module MAGEMinApp
 
         
                     dcc_store(id="session-id", data =  ""),     # gives a unique number of our session
+                    dcc_store(id="axis-ticks-store", data = AXIS_TICKS[]),
 
                     (ENABLE_MAGERES ? [] : [
                     dcc_store(id="mageres-progress-off", data = ""),
@@ -341,6 +344,7 @@ module MAGEMinApp
         verbose && println(" 3/4 Loading callbacks...")
         app = Tab_Simulation_Callbacks(app)
         app = Tab_PhaseDiagram_Callbacks(app)
+        app = axis_ticks_callbacks!(app)
         app = Tab_PhaseDiagram3D_Callbacks(app)
         app = Tab_MonteCarlo_Callbacks(app)
         app = subduction_geotherm_callbacks!(app, "")

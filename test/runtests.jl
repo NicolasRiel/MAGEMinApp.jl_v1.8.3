@@ -42,6 +42,10 @@ end
     include(joinpath(@__DIR__, "test_minipie.jl"))
 end
 
+@testset "axis ticks" begin
+    include(joinpath(@__DIR__, "test_axis_ticks.jl"))
+end
+
 @testset "isotopes" begin
     include(joinpath(@__DIR__, "test_isotopes.jl"))
 end

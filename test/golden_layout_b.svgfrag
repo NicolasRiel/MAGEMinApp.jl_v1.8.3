@@ -1,0 +1,24 @@
+<g id="Layout" fill="#333333" font-family="Helvetica, Arial, sans-serif" font-size="10">
+<g id="Outline" fill="none" stroke="#333333" stroke-width="1">
+<rect id="Outline_frame" x="80" y="60" width="554" height="590"/>
+</g>
+<g id="Ticks" stroke="#333333" stroke-width="0.75">
+<line x1="149.25" y1="650" x2="149.25" y2="654"/>
+<line x1="149.25" y1="60" x2="149.25" y2="56"/>
+<line x1="357" y1="650" x2="357" y2="654"/>
+<line x1="357" y1="60" x2="357" y2="56"/>
+<line x1="80" y1="551.67" x2="76" y2="551.67"/>
+<line x1="634" y1="551.67" x2="638" y2="551.67"/>
+<line x1="80" y1="428.75" x2="76" y2="428.75"/>
+<line x1="634" y1="428.75" x2="638" y2="428.75"/>
+</g>
+<g id="Tick_labels" fill="#333333">
+<text id="Tick_x_1" x="149.25" y="662" text-anchor="end" transform="rotate(-45 149.25 662)"><tspan x="149.25" dy="0.35em">a</tspan></text>
+<text id="Tick_x_2" x="357" y="662" text-anchor="end" transform="rotate(-45 357 662)"><tspan x="357" dy="0.35em">b</tspan></text>
+<text id="Tick_y_1" x="72" y="551.67" text-anchor="end"><tspan x="72" dy="0.35em">5</tspan></text>
+<text id="Tick_y_2" x="72" y="428.75" text-anchor="end"><tspan x="72" dy="0.35em">10</tspan></text>
+</g>
+<g id="Axis_titles" fill="#333333" font-size="12" text-anchor="middle">
+<text id="Axis_title_y" x="34" y="355" transform="rotate(-90 34 355)"><tspan x="34" dy="0.35em">Y</tspan></text>
+</g>
+</g>

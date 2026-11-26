@@ -1465,6 +1465,7 @@ function Tab_PhaseDiagram_Callbacks(app)
         subd_inputs("")...,
         Input("smooth-boundaries-switch", "value"),
         Input("smooth-boundaries-sigma",  "value"),
+        Input("axis-ticks-store",         "data"),
 
         # STATES
         State("field-size-id",          "value"),
@@ -1640,7 +1641,7 @@ function Tab_PhaseDiagram_Callbacks(app)
             colorMap,   smooth,     rangeColor, set_white,  reverse,    fieldname,  o18_q,      o18_p1,     o18_p2,     te_name,    te_disp,    updateTitle,     loadstateid,       warr_naming, pressure_unit,
             assemblage_selected_cells, clearHighlight,
             subd_show,  subd_vel,   subd_dip,   subd_depth, subd_T0,    subd_T1,    subd_h,     subd_d,     subd_kappa, subd_rho,
-            smooth_bnd, smooth_sigma,
+            smooth_bnd, smooth_sigma, tick_store,
             # STATES
             field_size, customTitle, txt_list,
             custW,      diagType,   dtb,        dataset,    watsat,     watsat_val, cpx,        limOpx,     limOpxVal,  ph_selection, pure_ph_selection, PTpath,
@@ -2182,6 +2183,11 @@ function Tab_PhaseDiagram_Callbacks(app)
             data_plot            = vcat(label_plot, data_plot[end])
             layout[:annotations] = annotations
 
+        elseif bid == "axis-ticks-store"
+            if !@isdefined(data_plot) || !@isdefined(layout) || !@isdefined(data)
+                return ntuple(_ -> no_update(), 23)
+            end
+
         elseif bid == "pressure-unit-dropdown"
             if !@isdefined(data_plot) || !@isdefined(layout)
                 return no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update(), no_update()
@@ -2319,7 +2325,7 @@ function Tab_PhaseDiagram_Callbacks(app)
                 layout_iso[:annotations] = vcat(layout_iso[:annotations], iso_anns)
             end
             data_all_disp, layout_disp = apply_pressure_display(data_all, layout_iso, diagType)
-            fig = plot_diagram(data_all_disp,layout_disp)
+            fig = plot_diagram(data_all_disp, ticked_layout(layout_disp, current_axis_tick_spec(tick_store)))
 
         end
 
@@ -2795,6 +2801,7 @@ function Tab_PhaseDiagram_Callbacks(app)
         Output("tb-canvas",       "is_open"),
         Output("tb-stats-table",  "data"),
         Input("tb-generate-button", "n_clicks"),
+        Input("axis-ticks-store",   "data"),
         State("tb-formula-store",   "data"),
         State("tb-color-store",     "data"),
         State("tb-compunit-dropdown", "value"),
@@ -2804,13 +2811,19 @@ function Tab_PhaseDiagram_Callbacks(app)
         State("diagram-dropdown",   "value"),
         State("pressure-unit-dropdown", "value"),
         prevent_initial_call = true,
-    ) do _n, formula_store, color_store, comp_unit, csv_data, sub, refLvl, diagType, pressure_unit
+    ) do _n, tick_store, formula_store, color_store, comp_unit, csv_data, sub, refLvl, diagType, pressure_unit
+
+        ticks_only = pushed_button( callback_context() ) == "axis-ticks-store"
+        if ticks_only && (isnothing(_n) || _n == 0)
+            return no_update(), no_update(), no_update(), no_update()
+        end
 
         global use_GPa
         use_GPa[1] = (pressure_unit == "gpa")
 
         if isnothing(formula_store) || isempty(formula_store) ||
            isnothing(csv_data)      || isempty(csv_data)
+            ticks_only && return no_update(), no_update(), no_update(), no_update()
             return plot(Layout(height=600)), PlotConfig(), false, []
         end
 
@@ -2843,11 +2856,8 @@ function Tab_PhaseDiagram_Callbacks(app)
         ann = (@isdefined(layout) && haskey(layout.fields, :annotations)) ?
               layout[:annotations] : []
 
-        ticks = 4
-        frame = get_plot_frame(Xrange, Yrange, ticks)
-
         canvas_layout = Layout(
-            images        = frame,
+            images        = diagram_logo_images(),
             font          = attr(size=10),
             height        = 700,
             margin        = attr(autoexpand=false, l=60, r=12, b=55, t=80),
@@ -2856,16 +2866,10 @@ function Tab_PhaseDiagram_Callbacks(app)
             plot_bgcolor  = "white",
             xaxis         = attr(title    = xtitle,
                                  range    = [Xrange[1], Xrange[2]],
-                                 tickmode = "linear",
-                                 tick0    = Xrange[1],
-                                 dtick    = (Xrange[2] - Xrange[1]) / (ticks + 1),
                                  showgrid = false,
                                  zeroline = false),
             yaxis         = attr(title    = ytitle,
                                  range    = [Yrange[1], Yrange[2]],
-                                 tickmode = "linear",
-                                 tick0    = Yrange[1],
-                                 dtick    = (Yrange[2] - Yrange[1]) / (ticks + 1),
                                  showgrid = false,
                                  zeroline = false),
             annotations   = ann,
@@ -2873,7 +2877,7 @@ function Tab_PhaseDiagram_Callbacks(app)
         )
 
         traces, canvas_layout = apply_pressure_display(traces, canvas_layout, diagType)
-        fig    = plot(traces, canvas_layout)
+        fig    = plot(traces, ticked_layout(canvas_layout, current_axis_tick_spec(tick_store)))
         config = PlotConfig(
             toImageButtonOptions = attr(
                 name     = "Download as svg",
@@ -2885,7 +2889,7 @@ function Tab_PhaseDiagram_Callbacks(app)
             ).fields
         )
 
-        return fig, config, true, stats
+        return fig, config, ticks_only ? no_update() : true, stats
     end
 
     # ── Auto-range: populate iso-min/step/max from selected isopleth field ──
@@ -3026,9 +3030,10 @@ function Tab_PhaseDiagram_Callbacks(app)
         State("pd-pie-radius",    "value"),
         State("pd-pie-unit",      "value"),
         State("pd-fc-polys",      "data"),
+        State("axis-ticks-store", "data"),
 
         prevent_initial_call = true,
-    ) do _n, show_reaction, show_mesh, show_labels, fieldname, smooth_bnd, smooth_sigma, pies, pie_radius, pie_unit, field_colors
+    ) do _n, show_reaction, show_mesh, show_labels, fieldname, smooth_bnd, smooth_sigma, pies, pie_radius, pie_unit, field_colors, tick_store
 
         global data, gridded, layout, data_reaction, data_isopleth, iso_show, heat_map_export, assemblage_rows, pd_fig_meta, output_dir
 
@@ -3055,7 +3060,8 @@ function Tab_PhaseDiagram_Callbacks(app)
                                     show_reaction = show_reaction == "true", show_mesh = show_mesh == "true", show_labels = show_labels == "true",
                                     geotherms = SUBD_TRACES["pd"],
                                     pies = isnothing(pies) ? Any[] : collect(Any, pies), pie_radius = something(pie_radius, 20), pie_unit = something(pie_unit, "wt"),
-                                    field_colors = isnothing(field_colors) ? Any[] : collect(Any, field_colors))
+                                    field_colors = isnothing(field_colors) ? Any[] : collect(Any, field_colors),
+                                    tick_spec = current_axis_tick_spec(tick_store))
             mkpath(output_dir[1])
             base = output_dir[1] * replace(isempty(parts.title) ? "phase_diagram" : parts.title, r"[ /\\:]" => "_")
             path = base * "_" * strip(replace(string(fieldname), r"[^A-Za-z0-9]+" => "_"), '_') * ".svg"

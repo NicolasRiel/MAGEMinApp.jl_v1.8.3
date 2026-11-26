@@ -68,6 +68,53 @@ function pd_field_coloring_tab()
     ]
 end
 
+function axis_tick_options()
+    small = Dict("font-size" => "80%", "color" => "grey")
+    btn   = Dict("border" => "1px grey solid", "font-size" => "100%", "width" => "100%")
+    sel   = Dict("font-size" => "75%", "padding-left" => "4px", "padding-right" => "16px", "background-position" => "right 3px center")
+    ax    = AXIS_TICKS[]["axes"]["T"]
+    st    = AXIS_TICKS[]["style"]
+    num(id, value; kw...) = dbc_input(id = id, type = "number", value = value, size = "sm", style = Dict("font-size" => "80%"); kw...)
+    lcol(label, child; w = 4, pad = "0px 2px") = dbc_col([html_div(label, style = small), child], width = w, style = Dict("padding" => pad))
+    return Any[
+        html_div("Axis ticks", style = Dict("font-size" => "100%", "fontWeight" => "bold", "marginTop" => 4)),
+        dbc_row([
+            lcol("Axis", dbc_select(id = "axis-ticks-quantity", size = "sm", value = "T", style = sel,
+                                    options = [Dict("label" => TICK_QUANTITY_LABELS[q], "value" => q) for q in TICK_QUANTITIES]); w = 7, pad = "0px 2px 0px 12px"),
+            lcol("Mode", dbc_select(id = "axis-ticks-mode", size = "sm", value = ax["mode"], style = sel,
+                                    options = [Dict("label" => "divisions", "value" => "divisions"), Dict("label" => "step", "value" => "step")]); w = 5, pad = "0px 12px 0px 2px"),
+        ]),
+        dbc_row([
+            lcol("Divisions", num("axis-ticks-ndiv", ax["n_div"]; min = 1, max = 50, step = 1); pad = "0px 2px 0px 12px"),
+            lcol("Step",      num("axis-ticks-step", ax["step"]; min = 0)),
+            lcol("Start",     num("axis-ticks-start", ax["start"]); pad = "0px 12px 0px 2px"),
+        ], style = Dict("marginTop" => 4)),
+        html_div(id = "axis-ticks-unit", children = "", style = Dict("font-size" => "70%", "color" => "grey", "marginTop" => 2)),
+        dbc_row([
+            lcol("Minor between", num("axis-ticks-nminor", ax["n_minor"]; min = 0, max = 10, step = 1); pad = "0px 2px 0px 12px"),
+            lcol("Label every",   num("axis-ticks-every", ax["label_every"]; min = 1, max = 50, step = 1)),
+            lcol("Decimals",      num("axis-ticks-decimals", ax["decimals"]; min = 0, max = 6, step = 1, placeholder = "auto"); pad = "0px 12px 0px 2px"),
+        ], style = Dict("marginTop" => 4)),
+        html_div("Style (all axes)", style = merge(small, Dict("marginTop" => 8))),
+        dbc_row([
+            lcol("Direction", dbc_select(id = "axis-ticks-dir", size = "sm", value = st["direction"], style = sel,
+                                         options = [Dict("label" => "outside", "value" => "outside"), Dict("label" => "inside", "value" => "inside")]); pad = "0px 2px 0px 12px"),
+            lcol("Major len", num("axis-ticks-majlen", st["major_len"]; min = 0, max = 20, step = 0.5)),
+            lcol("Minor len", num("axis-ticks-minlen", st["minor_len"]; min = 0, max = 20, step = 0.5); pad = "0px 12px 0px 2px"),
+        ]),
+        dbc_switch(label = "Ticks on all four sides", id = "axis-ticks-mirror", value = st["mirror"], style = Dict("font-size" => "80%", "marginTop" => 4)),
+        dbc_row([
+            dbc_col(dbc_button("Apply ticks", id = "axis-ticks-apply", color = "light", size = "sm", n_clicks = 0,
+                               style = merge(btn, Dict("background-color" => "#d3f2ce"))), width = 6, style = Dict("padding-right" => "2px")),
+            dbc_col(dbc_button("Reset all", id = "axis-ticks-reset", color = "light", size = "sm", n_clicks = 0, style = btn),
+                    width = 6, style = Dict("padding-left" => "2px")),
+        ], style = Dict("marginTop" => 4)),
+        html_div(id = "axis-ticks-status", children = "", style = Dict("font-size" => "75%", "color" => "grey", "marginTop" => 4, "wordBreak" => "break-all")),
+        html_div("Divisions: equal intervals between the axis limits. Step: ticks at start + k·step (start blank = multiples of step). Settings apply to every diagram and its SVG export, and are kept for the next session.",
+                 style = Dict("font-size" => "70%", "color" => "grey", "marginTop" => 4)),
+    ]
+end
+
 function phase_pie_section(; unit_id, pie_id, title_id, table_id, div_id)
     return [
         dbc_row([
@@ -510,6 +557,7 @@ function Tab_PhaseDiagram()
                                                         tooltip = Dict("placement" => "bottom")),
                                         ]),
                                       ]),
+                                      dbc_tab(label="Ticks", children = axis_tick_options()),
                                       ]),
                                     ])),
                                     id          = "collapse-export-figure",

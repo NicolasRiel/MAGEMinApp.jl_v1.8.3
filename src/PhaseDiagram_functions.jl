@@ -1249,10 +1249,8 @@ function compute_new_phaseDiagram(  xtitle,     ytitle,     lbl,        field_si
 
         poly_phases, poly_pcoor = compute_assemblage_boundaries(gridded_fields, Xrange, Yrange)
 
-        ticks   = 4
-        frame   = get_plot_frame(Xrange,Yrange, ticks)
         layout  = Layout(
-                    images=frame,
+                    images=diagram_logo_images(),
                     title= attr(
                         text    = customTitle,
                         x       = 0.5,
@@ -1271,19 +1269,11 @@ function compute_new_phaseDiagram(  xtitle,     ytitle,     lbl,        field_si
                     width       = 720,
                     height      = 900,
                     autosize    = false,
-                    margin      = attr(autoexpand = false, l=0, r=116, b=260, t=50, pad=1),
+                    margin      = attr(autoexpand = false, l=0, r=116, b=260, t=50, pad=0),
                     xaxis_range = Xrange, 
                     yaxis_range = Yrange,
-                    xaxis       = attr(     tickmode    = "linear",
-                                            tick0       = Xrange[1],
-                                            dtick       = (Xrange[2]-Xrange[1])/(ticks+1),
-                                            fixedrange    = true,
-                                        ),
-                    yaxis       = attr(     tickmode    = "linear",
-                                            tick0       = Yrange[1],
-                                            dtick       = (Yrange[2]-Yrange[1])/(ticks+1),
-                                            fixedrange    = true,
-                                    ),
+                    xaxis       = attr(     fixedrange    = true ),
+                    yaxis       = attr(     fixedrange    = true ),
                 )
         minColor        = round(grid_min(gridded),digits=2); 
         maxColor        = round(grid_max(gridded),digits=2);    

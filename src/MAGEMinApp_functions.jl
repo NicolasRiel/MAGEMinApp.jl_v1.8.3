@@ -1287,145 +1287,17 @@ function compute_assemblage_boundaries(gridded_fields::Matrix{Int64}, Xrange, Yr
     end
 end
 
-"""
-    Function to generate the frame of the diagrams,
-    This includes MAGEMin logo, outline and ticks
-"""
-function get_plot_frame(Xrange, Yrange, ticks)
-
-    frame   = Array{PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}, 1}(undef, 1+4+ticks*6)
-    # frame   = Array{PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}, 1}(undef, 1+4+1)
-
-    outline = [ attr(
-        source  =  "assets/static/images/MAGEMin.jpg",
+diagram_logo_images() = [attr(
+        source  = "assets/static/images/MAGEMin.jpg",
         xref    = "paper",
         yref    = "paper",
         x       =  0.05,
         y       =  1.01,
-        sizex   =  0.1, 
+        sizex   =  0.1,
         sizey   =  0.1,
-        xanchor = "right", 
-        yanchor = "bottom"
-    ),
-    attr(
-        source  = "assets/static/images/img_v.png",
-        xref    = "paper",
-        yref    = "paper",
-        x       =  0.0,
-        y       =  0.0,
-        sizex   =  0.002, 
-        sizey   =  1.0,
-        xanchor = "right", 
-        yanchor = "bottom"
-    ),
-    attr(
-        source  = "assets/static/images/img_v.png",
-        xref    = "paper",
-        yref    = "paper",
-        x       =  1.0,
-        y       =  0.0,
-        sizex   =  0.002, 
-        sizey   =  1.0,
-        xanchor = "right", 
-        yanchor = "bottom"
-    ),
-    attr(
-        source  = "assets/static/images/img_h.png",
-        xref    = "paper",
-        yref    = "paper",
-        x       =  1.0,
-        y       =  0.0,
-        sizex   =  1.0, 
-        sizey   =  0.002,
-        xanchor = "right", 
-        yanchor = "bottom"
-    ),
-    attr(
-        source  = "assets/static/images/img_h.png",
-        xref    = "paper",
-        yref    = "paper",
-        x       =  1.0,
-        y       =  1.0,
-        sizex   =  1.0, 
-        sizey   =  0.002,
-        xanchor = "right", 
+        xanchor = "right",
         yanchor = "bottom"
     )]
-
-    frame[1:5] .= outline
-
-    dx = 1.0/(ticks+1)
-    dy = 1.0/(ticks+1)
-
-
-    frame[6] = attr(        source  = "assets/static/images/img_h_tick.png",
-                            xref    = "paper",
-                            yref    = "paper",
-                            x       =  0.0,
-                            y       =  dy,
-                            sizex   =  0.005, 
-                            sizey   =  0.002,
-                            xanchor = "right", 
-                            yanchor = "bottom"  )  
-
-  
-
-    n = 6
-    for i=0:(ticks+1)
-
-        frame[n] = attr(    source  = "assets/static/images/img_h_tick.png",
-                            xref    = "paper",
-                            yref    = "paper",
-                            # x       =  0.005,
-                            x       =  0.0,
-                            y       =  dy*i,
-
-                            sizex   =  0.005, 
-                            sizey   =  0.002,
-                            xanchor = "right", 
-                            yanchor = "bottom"  )  
-        n+=1
-        frame[n] = attr(    source  = "assets/static/images/img_h_tick.png",
-                            xref    = "paper",
-                            yref    = "paper",
-                            # x       =  1.0,
-                            x       =  1.005,
-                            y       =  dy*i,
-
-                            sizex   =  0.005, 
-                            sizey   =  0.002,
-                            xanchor = "right", 
-                            yanchor = "bottom"  )  
-        n+=1
-        frame[n] = attr(    source  = "assets/static/images/img_v_tick.png",
-                            xref    = "paper",
-                            yref    = "paper",
-                            x       =  dx*i,
-                            # y       =  0.0,
-                            y       =  -0.005,
-
-                            sizex   =  0.002, 
-                            sizey   =  0.005,
-                            xanchor = "right", 
-                            yanchor = "bottom"  )  
-        n+=1
-        frame[n] = attr(    source  = "assets/static/images/img_v_tick.png",
-                            xref    = "paper",
-                            yref    = "paper",
-                            x       =  dx*i,
-                            # y       =  0.995,
-                            y       =  1.0,
-
-                            sizex   =  0.002, 
-                            sizey   =  0.005,
-                            xanchor = "right", 
-                            yanchor = "bottom"  )  
-        n+=1
-
-    end
-    
-    return frame
-end
 
 
 """

@@ -244,7 +244,8 @@ function pd_figure_parts(; data, gridded, heat_map, layout_g, reaction, data_iso
                           assemblage_rows, xtitle::AbstractString, ytitle::AbstractString, diagType::AbstractString,
                           show_reaction::Bool, show_mesh::Bool, show_labels::Bool, geotherms = GenericTrace[],
                           fills = Tuple{Vector{Matrix{Float64}},NTuple{4,Float64}}[], iso_sigma::Real = 0.0,
-                          pies = Any[], pie_radius::Real = 20, pie_unit = "wt", field_colors = Any[])
+                          pies = Any[], pie_radius::Real = 20, pie_unit = "wt", field_colors = Any[],
+                          tick_spec = AXIS_TICKS[])
     global phase_infos
     convert_p = use_GPa[1] && pressure_on_y_axis(diagType)
     yconv(y::Real) = convert_p ? display_pressure(Float64(y)) : Float64(y)
@@ -318,7 +319,7 @@ function pd_figure_parts(; data, gridded, heat_map, layout_g, reaction, data_iso
         info = [string(f[:text]) for f in paper]
     end
 
-    return (xrange = xr, yrange = yr, ticks = 4, title = title, xtitle = String(xtitle), ytitle = ytitle_disp,
+    return (xrange = xr, yrange = yr, tick_spec = tick_spec, title = title, xtitle = String(xtitle), ytitle = ytitle_disp,
             gridded = pd_fill_gridded(gridded, data), zmin = zmin, zmax = zmax, stops = stops, smooth = smooth, field_title = ftitle, ztick = ztick,
             mesh = mesh, reaction = lines,
             fills = [([[(r[k, 1], yconv(r[k, 2])) for k in 1:size(r, 1)] for r in rings], col) for (rings, col) in fills],
@@ -566,9 +567,7 @@ function pd_export_svg(parts, path::AbstractString)
         svg_group_close(io)
     end
 
-    nt = parts.ticks + 1
-    svg_layout_layers(io, c, seen; xticks = [xr[1] + k * (xr[2] - xr[1]) / nt for k in 0:nt],
-                       yticks = [yr[1] + k * (yr[2] - yr[1]) / nt for k in 0:nt],
+    svg_layout_layers(io, c, seen; svg_axis_tick_kwargs(parts.tick_spec, parts.xtitle, parts.ytitle, xr, yr)...,
                        xtitle = parts.xtitle, ytitle = parts.ytitle, title = parts.title, font = font, ink = ink)
 
     bar_x, bar_w = right + 16, 12.0
